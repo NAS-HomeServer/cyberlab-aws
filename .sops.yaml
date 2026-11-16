@@ -1,0 +1,9 @@
+# Regles de chiffrement SOPS. La cle PUBLIQUE age ci-dessous peut etre versionnee ;
+# la cle privee, elle, reste chez vous (voir secrets/README.md). Generer les deux avec :
+#   scripts/secrets.sh keygen
+creation_rules:
+  - path_regex: ^secrets/(staging|production)/.*\.sops\.yaml$
+    # Seules les valeurs des Secrets Kubernetes sont chiffrees : les noms et les
+    # cles restent lisibles, ce qui garde les diffs de PR comprehensibles.
+    encrypted_regex: ^(data|stringData)$
+    age: age1REMPLACER_PAR_VOTRE_CLE_PUBLIQUE

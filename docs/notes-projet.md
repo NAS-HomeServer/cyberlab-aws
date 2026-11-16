@@ -288,3 +288,45 @@ alors tout : `terraform apply`, puis ArgoCD synchronise les applications.
 - **Conséquence sur le plan** : l'étape « Ansible » devient « bootstrap cloud-init »
   (K3s, ArgoCD, clé age, éventuellement Tailscale), et la reconstruction se résume à
   `terraform apply`.
+
+## Étape 4 — Secrets chiffrés (SOPS + age)
+
+### Décisions
+
+- **SOPS + age, clé privée gardée par l'utilisateur.** La clé publique est dans `.sops.yaml`
+  (versionnable), la clé privée n'est jamais dans le dépôt. Seules les *valeurs* des
+  Secrets Kubernetes sont chiffrées (`encrypted_regex`) : les diffs de PR restent lisibles.
+- **Déchiffrement par un script, pas par ArgoCD.** `scripts/secrets.sh apply <env>` fait
+  `sops --decrypt | kubectl apply`. Le script d'amorçage de l'instance l'exécutera au
+  démarrage (étape suivante). ArgoCD gère les applications ; les Secrets sont créés à part.
+  *Alternative écartée* : KSOPS dans ArgoCD (vrai GitOps pour les secrets, mais exige une
+  image `repo-server` modifiée et un plugin à maintenir : la complexité que l'on veut éviter).
+  *Contrepartie assumée* : modifier un secret demande de relancer le script plutôt qu'un
+  simple `git push`.
+- **Un fichier par Secret** (`secrets/<env>/<nom>.sops.yaml`), des modèles dans
+  `secrets/templates/`. Le tunnel ne reçoit que son `TUNNEL_TOKEN` (moindre privilège).
+- **Les noms de variables** viennent de la lecture du code des backends
+  (`INTERNAL_API_TOKEN`, `DNS_ANALYZER_INTERNAL_TOKEN`, `GEMINI_API_KEY`, `ALLOWED_ORIGINS`) ;
+  les `.env` réels du NAS n'ont pas été lus : l'utilisateur les compare aux modèles.
+- **Garde-fou CI** (`ci/check-secrets-encrypted.sh`) : refuse tout fichier de `secrets/<env>/`
+  sans bloc `sops:` ou avec une valeur non chiffrée, en plus de Gitleaks.
+- **Comment la clé arrive au cluster à la reconstruction** : placée une fois par
+  l'utilisateur dans AWS Systems Manager Parameter Store (SecureString, hors Terraform),
+  lue au démarrage par l'instance via son rôle IAM, jamais dans le dépôt, `user_data` ni
+  l'état Terraform. Mise en œuvre à l'étape suivante.
+
+### Validation
+
+`k8s/kind/test-secrets.sh` : avec une clé **jetable**, dans un dépôt temporaire, `keygen`,
+`init`, `edit`, contrôle qu'aucune valeur n'est en clair, `apply` sur kind avec relecture de
+la valeur dans le cluster, et refus de déchiffrer avec une autre clé.
+
+### Difficultés rencontrées
+
+- **Bug trouvé par le test** : `keygen` remplaçait mal la clé publique dans `.sops.yaml` (le
+  marqueur contient des majuscules et des tirets bas, l'expression régulière attendait de
+  l'age réel). Le marqueur restait collé à la vraie clé et `init` refusait de continuer.
+- **Contexte kubectl** : le script d'application accepte `KUBE_CONTEXT` pour viser kind sans
+  toucher au contexte courant.
+- **Limite connue** : ce test n'est pas dans la CI (il exige sops, age et un cluster kind
+  avec le test principal) ; seul le garde-fou « tout est chiffré » y tourne.
