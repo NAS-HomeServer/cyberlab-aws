@@ -5,21 +5,16 @@ name: CI
 #   ① Code Quality : yamllint, shellcheck, kubeconform, promtool, terraform fmt/validate
 #   ② Security     : gitleaks, signatures Cosign des backends, trivy config (K8s et Terraform), scan des images
 #   ③ Tests (kind) : deploiement complet sur un cluster jetable + test de resilience
-# Runners heberges par GitHub (pas le NAS) : le depot est prive, rien n'est expose,
-# et un cluster kind jetable y est disponible sans toucher au NAS.
+# Runners heberges par GitHub (pas le NAS) : le depot est public, donc jamais de runner
+# auto-heberge (il executerait le code des PR), et un cluster kind jetable y est
+# disponible sans toucher au NAS.
+# Pas de filtre de chemins : les trois checks sont obligatoires pour fusionner
+# (protection de main), une PR qui ne touche que la documentation doit donc les
+# obtenir aussi. Le cout est de quelques minutes de CI.
 on:
   pull_request:
-    paths: &paths
-      - 'k8s/**'
-      - 'ci/**'
-      - 'terraform/**'
-      - 'scripts/**'
-      - '.yamllint.yml'
-      - '.trivyignore'
-      - '.github/workflows/ci.yml'
   push:
     branches: [main]
-    paths: *paths
   workflow_dispatch:
 
 permissions:
