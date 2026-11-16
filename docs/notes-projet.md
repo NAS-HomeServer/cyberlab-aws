@@ -7,7 +7,7 @@ recherche du titre RNCP. Une section par étape ; on ajoute, on ne réécrit pas
 ## Contexte et périmètre
 
 - **Dépôt dédié** : tout le travail AWS vit dans ce dépôt (`NAS-HomeServer/cyberlab-aws`).
-  `NAS-HomeServer/cyberlab-infra` reste la production sur le NAS (compose, Ansible,
+  `NAS-HomeServer/cyberlab-infra` reste la production sur le NAS (compose, Ansible du NAS,
   pipeline) et n'est pas modifié ; `HomeServer-monitoring` non plus.
   *Erreur de parcours* : la première PR (manifestes k8s) a d'abord été ouverte par
   erreur sur `cyberlab-infra` ; elle a été reprise ici et l'autre PR fermée.
@@ -17,7 +17,7 @@ recherche du titre RNCP. Une section par étape ; on ajoute, on ne réécrit pas
   chacun derrière un tunnel `cloudflared`, sur un NAS Synology (Docker Compose,
   Ansible, runner GitHub auto-hébergé). Images publiques sur GHCR, épinglées par
   digest, signées Cosign.
-- Objectif de l'étape A : le même service sur AWS (Terraform → EC2 K3s → Ansible
+- Objectif de l'étape A : le même service sur AWS (Terraform → EC2 K3s (cloud-init, sans Ansible)
   → ArgoCD → manifestes Kubernetes), deux environnements, supervision par le
   Prometheus du NAS via un Prometheus Agent. Le NAS reste la production tant que
   la bascule n'est pas décidée.
@@ -165,7 +165,7 @@ Principe : on valide ce que le cluster va réellement recevoir (la sortie de
 - **Outils exécutés en conteneurs épinglés par digest**, comme dans la CI du NAS ; les
   actions GitHub sont épinglées par SHA de commit.
 - **Version de Kubernetes de kubeconform** : 1.33, à aligner sur la version de K3s
-  choisie à l'étape Ansible.
+  choisie pour le bootstrap de l'instance.
 - **Cosign dans la CI** : la signature est vérifiée dès la PR. Une image non signée par
   la CI de son dépôt n'atteint jamais ArgoCD. (Vérifié en local sur les 3 images actuelles.)
 - **Pas de job « Deploy »** : le déploiement est fait par ArgoCD (GitOps, étape 6), pas
@@ -200,3 +200,91 @@ Comment une nouvelle image backend arrive dans `k8s/` : les PR `bump/*` des back
 visent `cyberlab-infra`. Options : un `sed` en plus dans la CI des 3 backends (nécessite
 un jeton vers ce dépôt), ou un workflow ici qui lit les digests du compose de
 `cyberlab-infra` et ouvre une PR sur l'overlay staging.
+
+## Étape 3 — Terraform (infrastructure AWS)
+
+### Décisions
+
+- **Deux modules** : `terraform/bootstrap` (bucket d'état S3, créé à part, `prevent_destroy`)
+  et `terraform/main` (tout le reste, détruisible). Le bucket d'état ne peut pas être créé
+  par le module qui l'utilise (œuf et poule) et ne doit jamais partir avec un `destroy`.
+  L'état du bootstrap reste local (il ne décrit qu'un bucket, réimportable).
+  *Alternative écartée* : tout dans un module avec un bucket `prevent_destroy` : un `destroy`
+  échouerait au lieu de détruire le reste.
+- **Verrou d'état S3 natif** (`use_lockfile`, Terraform ≥ 1.10) plutôt qu'une table DynamoDB :
+  une ressource de moins à créer, à payer et à expliquer.
+- **Backend partiel** : le nom du bucket (qui contient l'identifiant du compte) n'est pas
+  dans le dépôt ; il est fourni par `backend.hcl` (ignoré par git).
+- **Région `eu-west-3` (Paris)** par défaut, modifiable par variable.
+- **Instance `t3.small`** (x86 : les images backends sont en amd64), modifiable. Passage à
+  `t3.medium` si le nœud manque de mémoire (OOMKilled) : une ligne et un `apply`.
+- **Ubuntu 24.04 LTS** via le paramètre SSM public de Canonical. `ignore_changes = [ami]` :
+  sans cela, une nouvelle AMI ferait remplacer l'instance au prochain `plan`.
+- **Réseau** : 1 VPC, 1 sous-réseau public, pas de NAT Gateway (coût).
+- **Aucune entrée publique** : SSH limité à `ssh_allowed_cidrs` (jamais `0.0.0.0/0`,
+  validation Terraform) ; liste vide = accès par Systems Manager uniquement. Le rôle IAM
+  de l'instance n'a que `AmazonSSMManagedInstanceCore`.
+  *Alternative écartée* : SSH ouvert à tous (inacceptable) ; Session Manager seul par défaut
+  (demande le plugin SSM sur le poste, plus lourd pour se connecter à l'instance).
+- **Sorties ouvertes** : le cahier des charges prévoyait des sorties limitées vers le NAS.
+  Impossible sans casser les backends : sherlock sonde des centaines de sites,
+  dns-analyzer interroge des serveurs DNS et des ports choisis par l'utilisateur,
+  cloudflared exige 7844 (tcp/udp). Compromis : entrée fermée, sorties libres, contrôle fin
+  par NetworkPolicies. L'exception Trivy est écrite à côté de la règle (`#trivy:ignore`).
+  Resserrer (53, 80, 443, 7844, 123, Tailscale) casserait la fonction « interroger ce
+  serveur DNS sur ce port » : à arbitrer avec le jury si la question est posée.
+- **IMDSv2 obligatoire avec hop limit 1** : un pod (un saut réseau de plus) ne peut pas lire
+  les métadonnées de l'instance. Les backends effectuent des requêtes vers des cibles
+  choisies par l'utilisateur (risque SSRF) ; c'est la parade côté infrastructure.
+- **IP élastique dans le module principal** : stable aux arrêts/démarrages (ce que fait
+  `scripts/instance.sh`), libérée par un `destroy`. Avec Tailscale, le lien avec le NAS ne
+  dépend pas de l'IP publique. *Alternative écartée* : l'allouer dans le bootstrap pour
+  qu'elle survive aux `destroy` (coût permanent, utile seulement si le NAS filtrait par IP).
+- **Budget** : alerte à 80 % du réel et 100 % du prévu, 15 $/mois par défaut ; l'adresse
+  e-mail est une variable (jamais committée).
+- **Aucun volume de données** : disque racine gp3 chiffré, `delete_on_termination` ;
+  l'instance est jetable, tout se reconstruit.
+
+### Validation (aucun appel à AWS)
+
+`terraform fmt -check`, `init -backend=false` avec lockfile en lecture seule et `validate`
+sur les deux modules (en local et dans la CI) ; Trivy config sans finding HIGH/CRITICAL.
+Findings de moindre gravité connus et non traités : journaux d'accès du bucket d'état (LOW)
+et VPC Flow Logs (MEDIUM, coût et volume disproportionnés ici).
+`terraform plan` n'a **pas** été lancé : il interroge AWS et demande des identifiants.
+
+### Difficultés rencontrées
+
+- **Lockfile et architectures** : un `init` sur Mac Apple Silicon ne verrouille que
+  `darwin_arm64` ; la CI (linux amd64) échouait sur le checksum. Résolution :
+  `terraform providers lock` pour `linux_amd64`, `linux_arm64` et `darwin_arm64`.
+- **Règle Trivy AWS-0132** (clé KMS gérée par le client) : refusée pour des raisons de coût
+  (≈ 1 $/mois) ; SSE-S3 retenu, exception justifiée dans le code.
+- **Commentaire d'étape YAML** : un « : » dans un nom d'étape de workflow cassait le YAML.
+
+## Décision — pas d'Ansible côté AWS
+
+Ansible était prévu pour installer K3s et ArgoCD et injecter la clé age. Décision :
+s'en passer pour ne pas ajouter de difficulté, et faire ce bootstrap par `cloud-init`
+(script passé en `user_data` de l'instance Terraform). Terraform seul reconstruit
+alors tout : `terraform apply`, puis ArgoCD synchronise les applications.
+
+- **Pourquoi c'est possible** : les compétences évaluées demandent d'automatiser le
+  déploiement d'une infrastructure (Terraform) et de gérer les conteneurs et leur
+  orchestration (Kubernetes) ; aucune n'exige Ansible. Il reste utilisé en production sur
+  le NAS (dépôt `cyberlab-infra`), ce qui prouve la compétence par ailleurs.
+- **Point délicat : la clé age.** Elle ne doit pas figurer dans `user_data` (lisible par les
+  métadonnées de l'instance et la console AWS), ni dans le dépôt, ni dans l'état Terraform.
+  Solution retenue : la clé (et les autres secrets de démarrage) est placée une seule fois
+  par l'utilisateur dans AWS Systems Manager Parameter Store (SecureString, créé hors
+  Terraform) ; le rôle IAM de l'instance reçoit le droit de lire uniquement ces paramètres ;
+  le script de démarrage les lit et crée le Secret Kubernetes. Les pods ne peuvent pas
+  utiliser ce rôle (IMDSv2, hop limit 1). Reconstruction complète sans geste manuel.
+- **Limites acceptées** : cloud-init ne s'exécute qu'au premier démarrage (modifier le
+  script revient à recréer l'instance, ce que `terraform plan` montre explicitement) ;
+  le diagnostic passe par `/var/log/cloud-init-output.log` ; pas de durcissement système
+  détaillé (le groupe de sécurité ferme déjà toute entrée publique, Ubuntu applique les
+  mises à jour de sécurité automatiquement et refuse l'authentification SSH par mot de passe).
+- **Conséquence sur le plan** : l'étape « Ansible » devient « bootstrap cloud-init »
+  (K3s, ArgoCD, clé age, éventuellement Tailscale), et la reconstruction se résume à
+  `terraform apply`.
