@@ -28,6 +28,10 @@ for f in "$TMP"/secrets/staging/*.sops.yaml; do
   EDITOR="sed -i.bak s/CHANGEME/valeur-de-test-$name/" "$S" edit staging "$name"
   rm -f "$f.bak"
 done
+echo "== set : une valeur par saisie masquee"
+printf 'valeur-set-masquee\n' | "$S" set staging cloudflared-sherlock TUNNEL_TOKEN > /dev/null
+[ "$(sops --decrypt "$TMP/secrets/staging/cloudflared-sherlock.sops.yaml" | awk '/TUNNEL_TOKEN/{print $2}')" = "valeur-set-masquee" ] || { echo "ECHEC : set"; exit 1; }
+echo "set : OK"
 echo "== controle : aucune valeur en clair dans les fichiers"
 ! grep -rq 'valeur-de-test' "$TMP/secrets/staging" || { echo "ECHEC : valeur en clair"; exit 1; }
 "$TMP/ci/check-secrets-encrypted.sh"

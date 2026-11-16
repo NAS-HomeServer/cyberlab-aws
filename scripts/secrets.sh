@@ -2,6 +2,9 @@
 # Gestion des secrets chiffres avec SOPS + age.
 #   keygen            genere la cle age (si absente) et la reference dans .sops.yaml
 #   init <env>        cree secrets/<env>/*.sops.yaml depuis les modeles, chiffres
+#   set <env> <nom> <CLE> [--clipboard]
+#                     renseigne UNE valeur sans editeur : saisie masquee, ou presse-papiers
+#                     (macOS) avec --clipboard, qui est vide apres usage
 #   edit <env> <nom>  ouvre un secret dechiffre dans $EDITOR, rechiffre a l'enregistrement
 #   apply <env>       dechiffre et applique les Secrets dans le namespace cyberlab-<env>
 # <env> : staging | production.  Prerequis : sops, age, kubectl (pour apply).
@@ -44,7 +47,26 @@ case "${1:-}" in
       (cd "$ROOT" && sops --encrypt --in-place "$out")
       echo "cree : $out"
     done
-    echo "Etape suivante : scripts/secrets.sh edit $2 <nom> pour remplacer CHANGEME par les vraies valeurs."
+    echo "Etape suivante : scripts/secrets.sh set $2 <nom> <CLE> pour chaque valeur (ou edit pour tout un fichier)."
+    ;;
+  set)
+    check_env "${2:-}"
+    if [ -z "${3:-}" ] || [ -z "${4:-}" ]; then die "usage : set <env> <nom> <CLE> [--clipboard]"; fi
+    file="$SECRETS_DIR/$2/$3.sops.yaml"
+    [ -f "$file" ] || die "introuvable : $file (lancez d'abord : init $2)"
+    if [ "${5:-}" = "--clipboard" ]; then
+      value="$(pbpaste)"
+      printf '' | pbcopy
+      echo "Valeur lue dans le presse-papiers (qui vient d'etre vide)."
+    else
+      read -rsp "Valeur de $4 (invisible) : " value
+      echo
+    fi
+    [ -n "$value" ] || die "valeur vide, rien n'a ete modifie"
+    # La valeur passe par l'entree standard (jamais dans la liste des processus) en JSON.
+    printf '%s' "$value" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' \
+      | (cd "$ROOT" && sops set --value-stdin "$file" "[\"stringData\"][\"$4\"]")
+    echo "OK : $4 mis a jour dans $file"
     ;;
   edit)
     check_env "${2:-}"
@@ -63,7 +85,7 @@ case "${1:-}" in
     done
     ;;
   *)
-    echo "Usage : $0 {keygen | init <env> | edit <env> <nom> | apply <env>}" >&2
+    echo "Usage : $0 {keygen | init <env> | set <env> <nom> <CLE> [--clipboard] | edit <env> <nom> | apply <env>}" >&2
     exit 2
     ;;
 esac

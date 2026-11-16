@@ -16,8 +16,11 @@ scripts/secrets.sh keygen            # crée la clé privée et écrit la clé p
 #  >>> sauvegardez ~/.config/sops/age/keys.txt dans votre gestionnaire de mots de passe
 scripts/secrets.sh init staging      # crée secrets/staging/*.sops.yaml depuis secrets/templates/
 scripts/secrets.sh init production
-scripts/secrets.sh edit staging dns-analyzer-env     # remplacer CHANGEME par les vraies valeurs
+scripts/secrets.sh set staging cloudflared-sherlock TUNNEL_TOKEN --clipboard   # copier le token, puis lancer
+scripts/secrets.sh set staging dns-analyzer-env INTERNAL_API_TOKEN              # sans --clipboard : saisie masquee
 ```
+
+`set` renseigne **une valeur à la fois**, sans éditeur : avec `--clipboard`, il lit le presse-papiers puis le vide ; sans, il demande la valeur en saisie masquée (collez avec Cmd+V, rien ne s'affiche). `edit <env> <nom>` ouvre tout un fichier dans `$EDITOR` si vous préférez.
 
 Repérer les clés attendues : `secrets/templates/` liste les variables de chaque Secret (déduites du code des backends). Comparez-les au `.env` de chaque backend sur le NAS et ajoutez celles qui manquent.
 
