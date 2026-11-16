@@ -4,7 +4,7 @@ output "instance_id" {
 }
 
 output "public_ip" {
-  description = "IP elastique de l'instance (inventaire Ansible)."
+  description = "IP elastique de l'instance (connexion SSH, diagnostic)."
   value       = aws_eip.node.public_ip
 }
 

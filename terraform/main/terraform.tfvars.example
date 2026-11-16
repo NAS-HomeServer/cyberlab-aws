@@ -1,6 +1,6 @@
 # Copier en terraform.tfvars (ignore par git) et adapter. Aucun secret ici.
 
-# Cle publique SSH utilisee par Ansible (le contenu de ~/.ssh/id_ed25519.pub).
+# Cle publique SSH pour se connecter a l'instance (le contenu de ~/.ssh/id_ed25519.pub).
 ssh_public_key = "ssh-ed25519 AAAA... utilisateur@poste"
 
 # Votre IP publique en /32 pour ouvrir SSH ; liste vide = aucun port entrant
