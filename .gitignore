@@ -21,3 +21,6 @@ Thumbs.db
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Terraform : configuration du backend et variables locales (le fichier .terraform.lock.hcl, lui, est versionne)
+backend.hcl
