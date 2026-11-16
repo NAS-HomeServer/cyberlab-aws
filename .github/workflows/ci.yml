@@ -54,7 +54,7 @@ jobs:
       - name: shellcheck
         run: |
           docker run --rm -v "$PWD":/w -w /w "$SHELLCHECK_IMAGE" \
-            ci/render.sh ci/verify-signatures.sh ci/scan-images.sh scripts/instance.sh \
+            ci/render.sh ci/verify-signatures.sh ci/scan-images.sh scripts/instance.sh scripts/secrets.sh ci/check-secrets-encrypted.sh \
             k8s/kind/check-agent-config.sh k8s/kind/test.sh k8s/kind/test-resilience.sh
 
       # Le cluster ne recoit que ce que Kustomize rend : c'est cela qu'on valide.
@@ -85,6 +85,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Aucun secret en clair : tout fichier de secrets/ doit etre chiffre par SOPS.
+      - name: Secrets chiffres (SOPS)
+        run: ci/check-secrets-encrypted.sh
 
       - name: Gitleaks (detection de secrets)
         run: docker run --rm -v "$PWD":/w "$GITLEAKS_IMAGE" detect --source /w --no-git --redact --exit-code 1
