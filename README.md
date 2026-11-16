@@ -4,7 +4,7 @@ Migration du cyberlab (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrato
 
 Le NAS reste la production tant que la bascule n'est pas décidée : son dépôt, [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra), n'est pas modifié. La supervision (Prometheus, Grafana, Alertmanager) reste dans [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring).
 
-> État : étape 3 sur 7 (manifestes Kubernetes validés par la CI, infrastructure AWS décrite en Terraform). Le bootstrap de l'instance (cloud-init : K3s, ArgoCD), SOPS, ArgoCD et la liaison avec le NAS arrivent par petites PR, une par étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
+> État : étape 4 sur 7 (manifestes Kubernetes validés par la CI, infrastructure AWS décrite en Terraform). Le bootstrap de l'instance (cloud-init : K3s, ArgoCD), SOPS, ArgoCD et la liaison avec le NAS arrivent par petites PR, une par étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
 
 ## Contenu
 
@@ -14,6 +14,7 @@ k8s/
 ├── monitoring/{base,overlays/{kind,aws}}                # Prometheus Agent, node-exporter, kube-state-metrics
 └── kind/                                                # faux NAS et scripts de test local
 terraform/{bootstrap,main}                               # bucket d'état (à part) puis VPC, EC2, IAM, IP élastique, budget (voir terraform/README.md)
+scripts/secrets.sh                                       # secrets chiffrés (SOPS + age), voir secrets/README.md
 scripts/instance.sh                                      # arrêter / démarrer l'instance sans la détruire
 ci/                                                      # scripts de la CI (rendu, signatures Cosign, scan des images)
 .github/workflows/ci.yml                                 # pipeline : Code Quality, Security, Tests (kind)
