@@ -1,0 +1,23 @@
+# Secrets : jamais en clair (les secrets versionnes seront chiffres avec SOPS + age)
+.env
+.env.*
+!.env.example
+*.agekey
+age.key
+keys.txt
+
+# Terraform (etape suivante)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code worktrees
+.claude/worktrees/
