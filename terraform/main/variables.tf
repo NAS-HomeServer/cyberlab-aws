@@ -21,7 +21,7 @@ variable "root_volume_gb" {
 }
 
 variable "ssh_public_key" {
-  description = "Cle publique SSH installee sur l'instance (utilisateur ubuntu), pour Ansible."
+  description = "Cle publique SSH installee sur l'instance (utilisateur ubuntu), pour s'y connecter."
   type        = string
 }
 

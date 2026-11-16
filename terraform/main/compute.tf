@@ -30,7 +30,7 @@ resource "aws_instance" "node" {
     volume_type = "gp3"
     volume_size = var.root_volume_gb
     encrypted   = true
-    # Aucune donnee durable sur l'instance : tout se reconstruit (Terraform, Ansible, ArgoCD).
+    # Aucune donnee durable sur l'instance : tout se reconstruit (Terraform, cloud-init, ArgoCD).
     delete_on_termination = true
   }
 

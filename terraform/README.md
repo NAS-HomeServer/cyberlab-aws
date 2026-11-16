@@ -46,7 +46,7 @@ scripts/instance.sh stop     # plus de facturation de calcul ; K3s repart tout s
 scripts/instance.sh start    # attend que l'instance soit prête ; l'IP ne change pas
 ```
 
-`terraform destroy` est réservé au test de reconstruction : l'IP élastique est alors libérée et une nouvelle est attribuée au `apply` suivant (l'inventaire Ansible la lit dans `terraform output public_ip`).
+`terraform destroy` est réservé au test de reconstruction : l'IP élastique est alors libérée et une nouvelle est attribuée au `apply` suivant (`terraform output public_ip` l'affiche).
 
 ## Choix de sécurité à connaître
 
