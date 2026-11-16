@@ -47,7 +47,7 @@ done
 
 echo "== Series recues par le faux NAS (attente max 3 min)"
 q() { $K get --raw "/api/v1/namespaces/nas-sim/services/fake-nas:http/proxy/api/v1/query?query=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$1")"; }
-for i in $(seq 1 18); do
+for _ in $(seq 1 18); do
   out=$(q 'count by (job) (up{cluster="kind"})' || true)
   n=$(printf '%s' "$out" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)["data"]["result"]))' 2>/dev/null || echo 0)
   [ "$n" -ge 6 ] && break
@@ -56,7 +56,7 @@ done
 printf '%s\n' "$out" | python3 -m json.tool | grep -E '"job"|"value"' || true
 [ "$n" -ge 6 ] || { echo "ECHEC : moins de 6 jobs recus"; exit 1; }
 echo "-- Labels env/cluster sur l'etat des deployments (kube-state-metrics)"
-for i in $(seq 1 12); do
+for _ in $(seq 1 12); do
   out=$(q 'kube_deployment_status_replicas_available{env="kind",cluster="kind",deployment="sherlock"}' || true)
   printf '%s' "$out" | grep -q '"deployment":"sherlock"' && break
   sleep 10

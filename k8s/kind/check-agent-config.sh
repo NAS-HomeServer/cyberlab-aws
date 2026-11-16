@@ -14,6 +14,8 @@ cp "$ROOT/monitoring/overlays/$OVERLAY/prometheus.yml" "$TMP/prometheus.yml"
 cp "$ROOT/monitoring/base/scrape.yml" "$TMP/scrape/scrape.yml"
 # promtool verifie l'existence du fichier de jeton du ServiceAccount (absent hors cluster).
 echo "jeton-factice" > "$TMP/token"
+# mktemp cree un dossier en 0700 : promtool (utilisateur "nobody" dans le conteneur) doit pouvoir le lire.
+chmod -R a+rX "$TMP"
 # scrape_config_files pointe vers le chemin absolu du pod : on monte au meme endroit.
 docker run --rm --entrypoint promtool -v "$TMP":/etc/prometheus:ro \
   -v "$TMP/token":/var/run/secrets/kubernetes.io/serviceaccount/token:ro "$PROM_IMAGE" \
