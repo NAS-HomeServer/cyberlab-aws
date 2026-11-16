@@ -156,9 +156,10 @@ Principe : on valide ce que le cluster va réellement recevoir (la sortie de
 
 ### Décisions
 
-- **Runners hébergés par GitHub, pas le runner du NAS.** Le dépôt est privé (pas le
-  risque « code de PR de fork sur un runner auto-hébergé » du dépôt public), kind y
-  est disponible, et la CI de ce dépôt ne dépend plus de la disponibilité du NAS.
+- **Runners hébergés par GitHub, pas le runner du NAS.** Le dépôt est public : un
+  runner auto-hébergé y exécuterait le code des PR de forks (risque connu), alors qu'un
+  runner GitHub est jetable. kind y est disponible, et la CI de ce dépôt ne dépend plus
+  de la disponibilité du NAS.
   La CI de `cyberlab-infra` (NAS) n'est pas touchée.
   *Alternative écartée* : runner auto-hébergé sur le NAS (Synology + kind dedans :
   fragile, et mélange validation AWS et production NAS).
@@ -288,6 +289,17 @@ alors tout : `terraform apply`, puis ArgoCD synchronise les applications.
 - **Conséquence sur le plan** : l'étape « Ansible » devient « bootstrap cloud-init »
   (K3s, ArgoCD, clé age, éventuellement Tailscale), et la reconstruction se résume à
   `terraform apply`.
+
+### Protection de `main` et CI sans filtre de chemins
+
+`main` est protégé par un ruleset (PR obligatoire, pas de force-push, trois checks
+obligatoires : ① Code Quality, ② Security, ③ Tests (kind)). Avec un filtre de chemins sur
+la CI, une PR qui ne touche que la documentation n'aurait jamais ses checks et resterait
+bloquée : le filtre a été retiré (quelques minutes de CI en plus).
+
+*Difficulté rencontrée* : des PR empilées (#2 sur #1, #3 sur #2) ont été fusionnées dans
+leurs branches de base au lieu de `main` ; une PR d'intégration (#4) a été nécessaire.
+Leçon : une PR par branche, toutes ouvertes directement sur `main`.
 
 ## Étape 4 — Secrets chiffrés (SOPS + age)
 
