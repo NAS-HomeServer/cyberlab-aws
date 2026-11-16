@@ -26,6 +26,8 @@ Repérer les clés attendues : `secrets/templates/` liste les variables de chaqu
 
 Staging et production ont **chacun leurs propres tunnels** (tokens `cloudflared-*` distincts de ceux du NAS) : créez-les dans le tableau de bord Cloudflare avant de remplir les fichiers.
 
+Vérifier qu'il ne reste aucun `CHANGEME` : `scripts/secrets.sh check staging` (affiche un nombre par fichier ; la clé est cherchée dans `~/.config/sops/age/keys.txt`).
+
 ## Appliquer à la main (kind ou cluster existant)
 
 ```bash
