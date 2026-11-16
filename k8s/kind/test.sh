@@ -34,8 +34,14 @@ for b in sherlock:7100 dns-analyzer:4002 audit-orchestrator:4003; do
 done
 
 echo "== /metrics des tunnels cloudflared"
-for p in $($K -n cyberlab-kind get pods -l app.kubernetes.io/name=cloudflared -o name); do
-  $K get --raw "/api/v1/namespaces/cyberlab-kind/pods/${p#pod/}:2000/proxy/metrics" | grep -q cloudflared_tunnel
+# Un tunnel qui vient de (re)demarrer peut mettre quelques secondes a ouvrir son port.
+for p in $($K -n cyberlab-kind get pods -l app.kubernetes.io/name=cloudflared --field-selector=status.phase=Running -o name); do
+  ok=0
+  for _ in $(seq 1 15); do
+    if $K get --raw "/api/v1/namespaces/cyberlab-kind/pods/${p#pod/}:2000/proxy/metrics" 2>/dev/null | grep -q cloudflared_tunnel; then ok=1; break; fi
+    sleep 2
+  done
+  [ "$ok" = 1 ] || { echo "ECHEC : pas de /metrics sur $p"; exit 1; }
   echo "OK $p"
 done
 
