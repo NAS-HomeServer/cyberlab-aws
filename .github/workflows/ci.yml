@@ -1,0 +1,146 @@
+name: CI
+
+# Validation des manifestes Kubernetes AVANT toute mise en production : la prod
+# (ArgoCD) ne suit que ce qui a passe ces trois etapes sur main.
+#   ① Code Quality : yamllint, shellcheck, kubeconform, promtool, terraform fmt/validate
+#   ② Security     : gitleaks, signatures Cosign des backends, trivy config (K8s et Terraform), scan des images
+#   ③ Tests (kind) : deploiement complet sur un cluster jetable + test de resilience
+# Runners heberges par GitHub (pas le NAS) : le depot est prive, rien n'est expose,
+# et un cluster kind jetable y est disponible sans toucher au NAS.
+on:
+  pull_request:
+    paths: &paths
+      - 'k8s/**'
+      - 'ci/**'
+      - 'terraform/**'
+      - 'scripts/**'
+      - '.yamllint.yml'
+      - '.trivyignore'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [main]
+    paths: *paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  YAMLLINT_IMAGE: pipelinecomponents/yamllint:0.35.27@sha256:f7f7b4f8824839e33690a880dbe20944128b0dc9c55522a0b92a29b3a905cecf
+  SHELLCHECK_IMAGE: koalaman/shellcheck:v0.10.0@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb
+  KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c
+  TERRAFORM_IMAGE: hashicorp/terraform:1.17.2@sha256:6e9c1e647c31a960dc9b59e13272f9111d90010c10b717f77ffb324767660475
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  # Version de Kubernetes validee par kubeconform (a aligner sur la version de K3s).
+  KUBERNETES_VERSION: 1.33.0
+
+jobs:
+
+  lint:
+    name: "① Code Quality"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: yamllint
+        run: docker run --rm -v "$PWD":/w -w /w "$YAMLLINT_IMAGE" yamllint -c .yamllint.yml --strict k8s .yamllint.yml .github
+
+      - name: shellcheck
+        run: |
+          docker run --rm -v "$PWD":/w -w /w "$SHELLCHECK_IMAGE" \
+            ci/render.sh ci/verify-signatures.sh ci/scan-images.sh scripts/instance.sh \
+            k8s/kind/check-agent-config.sh k8s/kind/test.sh k8s/kind/test-resilience.sh
+
+      # Le cluster ne recoit que ce que Kustomize rend : c'est cela qu'on valide.
+      - name: Rendu des overlays (kustomize)
+        run: ci/render.sh "$RUNNER_TEMP/render"
+
+      - name: kubeconform (schemas Kubernetes, mode strict)
+        run: docker run --rm -v "$RUNNER_TEMP/render":/render:ro "$KUBECONFORM_IMAGE" -strict -summary -kubernetes-version "$KUBERNETES_VERSION" /render
+
+      # Aucun appel a AWS : init sans backend, validation de la syntaxe et des types seulement.
+      - name: Terraform (format et validation)
+        run: |
+          for dir in terraform/bootstrap terraform/main; do
+            docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" fmt -check -diff
+            docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" init -backend=false -input=false -lockfile=readonly
+            docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" validate
+          done
+
+      - name: promtool (configuration de l'agent Prometheus)
+        run: |
+          k8s/kind/check-agent-config.sh kind
+          k8s/kind/check-agent-config.sh aws
+
+  security:
+    name: "② Security"
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Gitleaks (detection de secrets)
+        run: docker run --rm -v "$PWD":/w "$GITLEAKS_IMAGE" detect --source /w --no-git --redact --exit-code 1
+
+      # Gate anticipe : une image backend non signee par la CI de son depot ne
+      # doit jamais arriver jusqu'a ArgoCD.
+      - name: Cosign (signature des images backends)
+        run: ci/verify-signatures.sh
+
+      - name: Rendu des overlays (kustomize)
+        run: ci/render.sh "$RUNNER_TEMP/render"
+
+      - name: Trivy config (misconfigurations, HIGH/CRITICAL bloquants)
+        run: |
+          docker run --rm -v "$RUNNER_TEMP/render":/render:ro -v "$PWD/.trivyignore":/.trivyignore:ro "$TRIVY_IMAGE" config \
+            --exit-code 1 --severity HIGH,CRITICAL --ignorefile /.trivyignore /render
+
+      - name: Trivy config (Terraform, misconfigurations AWS, HIGH/CRITICAL bloquants)
+        run: |
+          docker run --rm -v "$PWD/terraform":/terraform:ro -v "$PWD/.trivyignore":/.trivyignore:ro "$TRIVY_IMAGE" config \
+            --exit-code 1 --severity HIGH,CRITICAL --ignorefile /.trivyignore /terraform
+
+      # Informatif, jamais bloquant : voir docs/notes-projet.md (etat des lieux des
+      # vulnerabilites des images, dont celles des backends).
+      - name: Trivy image (scan informatif des images de production)
+        run: |
+          {
+            echo "## Vulnerabilites des images (HIGH/CRITICAL avec correctif disponible)"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          ci/scan-images.sh "$RUNNER_TEMP/render" "$RUNNER_TEMP/scan.md"
+          cat "$RUNNER_TEMP/scan.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/scan.md"
+
+  kind:
+    name: "③ Tests (kind)"
+    runs-on: ubuntu-latest
+    needs: [lint, security]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Versions des outils
+        run: |
+          kind version
+          kubectl version --client
+
+      - name: Deploiement complet sur kind (backends, tunnels, agent, faux NAS)
+        run: k8s/kind/test.sh
+
+      - name: Resilience du remote_write (coupure puis retablissement)
+        run: k8s/kind/test-resilience.sh 90
+
+      - name: Etat du cluster (en cas d'echec)
+        if: failure()
+        run: |
+          kubectl --context kind-cyberlab-test get pods -A -o wide || true
+          kubectl --context kind-cyberlab-test -n monitoring logs deploy/prometheus-agent --tail=50 || true
+          kubectl --context kind-cyberlab-test get events -A --sort-by=.lastTimestamp | tail -40 || true

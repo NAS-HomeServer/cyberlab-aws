@@ -1,0 +1,12 @@
+extends: default
+
+rules:
+  # Manifestes Kubernetes et workflows : le marqueur "---" n'apporte rien
+  # (les fichiers multi-documents l'utilisent quand même comme separateur).
+  document-start: disable
+  # Lignes d'images epinglees par digest sha256 : jusqu'a ~170 caracteres.
+  line-length:
+    max: 200
+  # La cle "on:" des workflows GitHub Actions est un booleen en YAML 1.1.
+  truthy:
+    check-keys: false
