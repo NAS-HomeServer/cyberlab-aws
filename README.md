@@ -4,7 +4,7 @@ Migration du cyberlab (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrato
 
 Le NAS reste la production tant que la bascule n'est pas décidée : son dépôt, [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra), n'est pas modifié. La supervision (Prometheus, Grafana, Alertmanager) reste dans [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring).
 
-> État : étape 1 sur 7 (manifestes Kubernetes, testés sur kind). Terraform, Ansible, SOPS, ArgoCD et la liaison avec le NAS arrivent par petites PR, une par étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
+> État : étape 2 sur 7 (manifestes Kubernetes testés sur kind, validés par la CI). Terraform, Ansible, SOPS, ArgoCD et la liaison avec le NAS arrivent par petites PR, une par étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
 
 ## Contenu
 
@@ -13,6 +13,8 @@ k8s/
 ├── cyberlab/{base,overlays/{kind,staging,production}}   # 3 backends + 3 tunnels cloudflared
 ├── monitoring/{base,overlays/{kind,aws}}                # Prometheus Agent, node-exporter, kube-state-metrics
 └── kind/                                                # faux NAS et scripts de test local
+ci/                                                      # scripts de la CI (rendu, signatures Cosign, scan des images)
+.github/workflows/ci.yml                                 # pipeline : Code Quality, Security, Tests (kind)
 docs/notes-projet.md                                     # décisions, alternatives écartées, difficultés
 ```
 
@@ -28,3 +30,15 @@ k8s/kind/test.sh                      # déploiement complet + séries reçues p
 k8s/kind/test-resilience.sh           # coupe puis rétablit la liaison remote_write
 k8s/kind/test.sh --cleanup            # supprime le cluster de test
 ```
+
+## Pipeline CI
+
+[`ci.yml`](.github/workflows/ci.yml) s'exécute sur chaque pull request et sur `main` (runners GitHub, chemins `k8s/`, `ci/`).
+
+| Étape | Contrôles |
+|---|---|
+| ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform (strict), promtool sur la config de l'agent |
+| ② Security | Gitleaks, signatures Cosign des backends, Trivy config (HIGH/CRITICAL bloquants), scan Trivy des images (informatif) |
+| ③ Tests (kind) | déploiement complet sur un cluster jetable + test de résilience du `remote_write` |
+
+Les mêmes scripts se lancent en local : `ci/render.sh <dossier>`, `ci/verify-signatures.sh`, `ci/scan-images.sh <dossier>`.

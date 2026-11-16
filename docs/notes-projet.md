@@ -139,3 +139,64 @@ Conséquences :
   À traiter (sed supplémentaire côté backends, ou workflow de synchronisation ici).
 - Secrets réels (SOPS + age + KSOPS) : étape 4 ; les overlays staging/production n'ont
   pas encore leurs Secrets.
+
+## Étape 2 — CI de validation des manifestes
+
+### Ce que fait la CI (`.github/workflows/ci.yml`)
+
+| Étape | Contrôles | Bloquant |
+|---|---|---|
+| ① Code Quality | yamllint `--strict`, shellcheck, rendu Kustomize puis kubeconform `-strict` (schémas Kubernetes), promtool sur la config de l'agent (overlays kind et aws) | oui |
+| ② Security | Gitleaks, signatures Cosign des images backends, Trivy config (HIGH/CRITICAL) sur les manifestes rendus, scan Trivy des images | tout sauf le scan des images |
+| ③ Tests (kind) | déploiement complet sur un cluster kind jetable, puis test de résilience du `remote_write` | oui |
+
+Principe : on valide ce que le cluster va réellement recevoir (la sortie de
+`kubectl kustomize`), pas les fichiers sources. C'est ce qui l'a justifié : les
+`images:`/`digest:` des overlays n'existent que dans le rendu.
+
+### Décisions
+
+- **Runners hébergés par GitHub, pas le runner du NAS.** Le dépôt est privé (pas le
+  risque « code de PR de fork sur un runner auto-hébergé » du dépôt public), kind y
+  est disponible, et la CI de ce dépôt ne dépend plus de la disponibilité du NAS.
+  La CI de `cyberlab-infra` (NAS) n'est pas touchée.
+  *Alternative écartée* : runner auto-hébergé sur le NAS (Synology + kind dedans :
+  fragile, et mélange validation AWS et production NAS).
+- **Outils exécutés en conteneurs épinglés par digest**, comme dans la CI du NAS ; les
+  actions GitHub sont épinglées par SHA de commit.
+- **Version de Kubernetes de kubeconform** : 1.33, à aligner sur la version de K3s
+  choisie à l'étape Ansible.
+- **Cosign dans la CI** : la signature est vérifiée dès la PR. Une image non signée par
+  la CI de son dépôt n'atteint jamais ArgoCD. (Vérifié en local sur les 3 images actuelles.)
+- **Pas de job « Deploy »** : le déploiement est fait par ArgoCD (GitOps, étape 6), pas
+  par la CI. La CI est donc la porte d'entrée de `main` (protection de branche à activer).
+
+### Constat : le scan des images est informatif, pas bloquant
+
+Premier scan Trivy (HIGH/CRITICAL, correctif disponible) : les 7 images remontent des
+vulnérabilités, dont les 3 backends (sherlock 21 HIGH + 1 CRITICAL, dns-analyzer 59 + 2,
+audit-orchestrator 13 + 1), kube-state-metrics (50 + 2) et Prometheus/node-exporter
+(binaires Go compilés avec une ancienne version de Go). Un scan bloquant aurait empêché
+tout déploiement dès le premier jour.
+- Décision : le scan est publié dans le résumé du job à chaque exécution ; le gate
+  bloquant reste le scan de configuration (misconfigurations) et la signature.
+- Action de fond (hors de ce dépôt) : reconstruire les images des backends sur une base à
+  jour (la CI de chaque backend scanne déjà ses images), mettre à jour Prometheus,
+  node-exporter et kube-state-metrics via Renovate. Une fois la dette résorbée, passer le
+  scan en bloquant (`--exit-code 1`).
+- À présenter au jury comme un risque connu, mesuré et suivi, plutôt que caché.
+
+### Difficultés rencontrées
+
+- **yamllint et regex longues** : les listes `keep` de métriques dépassaient 200
+  caractères. Résolution : chaînes entre guillemets avec continuation de ligne (`\`),
+  vérifiées identiques après relecture du YAML.
+- **shellcheck** a signalé des variables de boucle inutilisées dans les scripts de test
+  (`for _ in …`).
+
+### Reste à décider (étape 6)
+
+Comment une nouvelle image backend arrive dans `k8s/` : les PR `bump/*` des backends
+visent `cyberlab-infra`. Options : un `sed` en plus dans la CI des 3 backends (nécessite
+un jeton vers ce dépôt), ou un workflow ici qui lit les digests du compose de
+`cyberlab-infra` et ouvre une PR sur l'overlay staging.
