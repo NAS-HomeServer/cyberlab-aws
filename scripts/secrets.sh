@@ -6,6 +6,7 @@
 #                     renseigne UNE valeur sans editeur : saisie masquee, ou presse-papiers
 #                     (macOS) avec --clipboard, qui est vide apres usage
 #   edit <env> <nom>  ouvre un secret dechiffre dans $EDITOR, rechiffre a l'enregistrement
+#   check <env>       compte les CHANGEME restants par fichier (0 partout = pret)
 #   apply <env>       dechiffre et applique les Secrets dans le namespace cyberlab-<env>
 # <env> : staging | production.  Prerequis : sops, age, kubectl (pour apply).
 # Variable optionnelle KUBE_CONTEXT : contexte kubectl cible (defaut : le contexte courant).
@@ -73,6 +74,20 @@ case "${1:-}" in
     [ -n "${3:-}" ] || die "usage : edit <env> <nom>"
     (cd "$ROOT" && sops "$SECRETS_DIR/$2/$3.sops.yaml")
     ;;
+  check)
+    check_env "${2:-}"
+    shopt -s nullglob
+    files=("$SECRETS_DIR/$2"/*.sops.yaml)
+    if [ ${#files[@]} -eq 0 ]; then die "aucun secret dans $SECRETS_DIR/$2"; fi
+    total=0
+    for f in "${files[@]}"; do
+      n="$(sops --decrypt "$f" | grep -c CHANGEME || true)"
+      printf '%s : %s\n' "$(basename "$f")" "$n"
+      total=$((total + n))
+    done
+    if [ "$total" -ne 0 ]; then echo "$total valeur(s) a renseigner."; exit 1; fi
+    echo "Pret : aucun CHANGEME."
+    ;;
   apply)
     check_env "${2:-}"
     ns="cyberlab-$2"
@@ -85,7 +100,7 @@ case "${1:-}" in
     done
     ;;
   *)
-    echo "Usage : $0 {keygen | init <env> | set <env> <nom> <CLE> [--clipboard] | edit <env> <nom> | apply <env>}" >&2
+    echo "Usage : $0 {keygen | init <env> | set <env> <nom> <CLE> [--clipboard] | edit <env> <nom> | check <env> | apply <env>}" >&2
     exit 2
     ;;
 esac
