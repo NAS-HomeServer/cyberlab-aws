@@ -1,5 +1,5 @@
 variable "region" {
-  description = "Region AWS (la meme que le bucket d'etat)."
+  description = "Region AWS."
   type        = string
   default     = "eu-west-3" # Paris
 }

@@ -30,8 +30,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 ```
 1. Infrastructure AWS avec Terraform
      ├─ un réseau privé (VPC), une instance EC2, un rôle IAM limité, une IP élastique
-     ├─ un budget avec alertes e-mail
-     └─ un bucket S3 à part pour l'état Terraform, qui n'est jamais détruit
+     └─ un budget avec alertes e-mail
 
 2. Un cluster Kubernetes (K3s) qui s'installe tout seul
      ├─ un script de démarrage (cloud-init) installe K3s, Argo CD et Tailscale
@@ -105,7 +104,7 @@ terraform apply
 
 | Élément | Installé par | Quand |
 |---|---|---|
-| EC2, réseau, IAM, budget, bucket d'état | **Terraform** (`terraform/main` et `terraform/bootstrap`) | `terraform apply`, à la main |
+| EC2, réseau, IAM, budget | **Terraform** (`terraform/main`) | `terraform apply`, à la main |
 | K3s, Argo CD, secrets, Tailscale | **`scripts/bootstrap-node.sh`** (cloud-init) | une seule fois, au premier démarrage |
 | Backends, tunnels, supervision (les 12 pods) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` |
 
@@ -121,7 +120,7 @@ Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_rele
 | SOPS + age, clé dans SSM | aucun secret en clair dans le dépôt, la clé privée ne vit que dans le Parameter Store |
 | Images référencées par digest | une image ne peut pas changer sous nos pieds ; la CI vérifie leur signature Cosign |
 | Prometheus Agent → NAS par Tailscale | supervision centralisée sur l'existant, aucun port ouvert, accès limité par ACL |
-| Bucket d'état Terraform à part | il survit aux `destroy` ; l'infrastructure se détruit et se recrée librement |
+| État Terraform local | projet à un seul opérateur : le fichier `terraform.tfstate` survit aux `destroy` sur le poste, aucun bucket à créer ni à expliquer |
 
 ## Où sont les secrets (clé AWS, kubeconfig, CI)
 
@@ -164,18 +163,17 @@ Prérequis sur le poste : Terraform ≥ 1.10, AWS CLI configuré, [age](https://
 
 1. **Cloner le dépôt** et créer une clé SSH dédiée : `ssh-keygen -t ed25519 -f ~/.ssh/cyberlab-aws`.
 2. **Secrets** (une fois) : générer la paire age, renseigner les tokens des tunnels et les variables des backends, chiffrés par SOPS. → [secrets/README.md](secrets/README.md)
-3. **Bucket d'état Terraform** (une fois, jamais détruit) : `terraform/bootstrap`. → [terraform/README.md](terraform/README.md) §1
-4. **Paramètres SSM** (une fois, à la main) : la clé privée age (`/cyberlab-aws/age-key`) et la clé d'authentification Tailscale (`/cyberlab-aws/tailscale-authkey`). → [terraform/README.md](terraform/README.md) §2 bis et quater
-5. **Réglages côté NAS** (une fois) : tag et ACL Tailscale, récepteur `remote_write` sur Prometheus, règles d'alerte. → [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md)
-6. **Créer l'infrastructure** : copier `backend.hcl.example` et `terraform.tfvars.example` (ignorés par git) dans `terraform/main`, puis :
+3. **Paramètres SSM** (une fois, à la main) : la clé privée age (`/cyberlab-aws/age-key`) et la clé d'authentification Tailscale (`/cyberlab-aws/tailscale-authkey`). → [terraform/README.md](terraform/README.md) §2 et §3
+4. **Réglages côté NAS** (une fois) : tag et ACL Tailscale, récepteur `remote_write` sur Prometheus, règles d'alerte. → [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md)
+5. **Créer l'infrastructure** : copier `terraform.tfvars.example` (ignoré par git) dans `terraform/main`, puis :
    ```bash
    cd terraform/main
-   terraform init -backend-config=backend.hcl
+   terraform init
    terraform plan                # relire avant d'appliquer
    terraform apply               # ⚠ crée des ressources facturées
    ```
    L'instance s'installe seule (environ 3 minutes) : K3s, Argo CD, secrets, Tailscale, puis le déploiement par Git.
-7. **Vérifier** : sur l'instance, `sudo kubectl -n argocd get applications` doit montrer les 3 applications `Synced` et `Healthy` (commandes détaillées dans [docs/test-reconstruction.md](docs/test-reconstruction.md)).
+6. **Vérifier** : sur l'instance, `sudo kubectl -n argocd get applications` doit montrer les 3 applications `Synced` et `Healthy` (commandes détaillées dans [docs/test-reconstruction.md](docs/test-reconstruction.md)).
 
 ### Fin de démonstration
 
@@ -204,7 +202,7 @@ k8s/
 ├── monitoring/{base,overlays/{kind,aws}}                # Prometheus Agent, node-exporter, kube-state-metrics
 ├── argocd/applications/                                 # les 3 Application Argo CD
 └── kind/                                                # faux NAS et scripts de test local
-terraform/{bootstrap,main}                               # bucket d'état (à part) puis VPC, EC2, IAM, IP élastique, budget
+terraform/main                                           # VPC, EC2, IAM, IP élastique, budget
 secrets/                                                 # secrets chiffrés (SOPS + age) par environnement
 scripts/
 ├── bootstrap-node.sh                                    # cloud-init : K3s, Argo CD, secrets, Tailscale, Applications

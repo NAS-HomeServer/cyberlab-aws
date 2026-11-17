@@ -62,11 +62,10 @@ jobs:
       # Aucun appel a AWS : init sans backend, validation de la syntaxe et des types seulement.
       - name: Terraform (format et validation)
         run: |
-          for dir in terraform/bootstrap terraform/main; do
-            docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" fmt -check -diff
-            docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" init -backend=false -input=false -lockfile=readonly
-            docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" validate
-          done
+          dir=terraform/main
+          docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" fmt -check -diff
+          docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" init -backend=false -input=false -lockfile=readonly
+          docker run --rm -v "$PWD":/w -w "/w/$dir" "$TERRAFORM_IMAGE" validate
 
       - name: promtool (configuration de l'agent Prometheus)
         run: |

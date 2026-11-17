@@ -38,7 +38,7 @@ Conséquences :
 - **Pas de volume EBS ni de bucket S3 pour les données** : les backends sont sans
   état durable. À noter dans le README (compétence « gérer le stockage de données » :
   la réponse est une décision argumentée, pas un volume inutile). Le seul stockage
-  durable du projet est l'état Terraform (bucket S3 créé à part).
+  durable du projet est l'état Terraform (fichier local sur le poste).
 - **Un seul réplica par backend** (sauf `dns-analyzer` en production, voir « Réplicas »
   plus bas) : `audit-orchestrator` garde ses jobs dans la mémoire du process, le suivi d'un
   job doit retomber sur le même pod.
@@ -207,16 +207,13 @@ un jeton vers ce dépôt), ou un workflow ici qui lit les digests du compose de
 
 ### Décisions
 
-- **Deux modules** : `terraform/bootstrap` (bucket d'état S3, créé à part, `prevent_destroy`)
-  et `terraform/main` (tout le reste, détruisible). Le bucket d'état ne peut pas être créé
-  par le module qui l'utilise (œuf et poule) et ne doit jamais partir avec un `destroy`.
-  L'état du bootstrap reste local (il ne décrit qu'un bucket, réimportable).
-  *Alternative écartée* : tout dans un module avec un bucket `prevent_destroy` : un `destroy`
-  échouerait au lieu de détruire le reste.
-- **Verrou d'état S3 natif** (`use_lockfile`, Terraform ≥ 1.10) plutôt qu'une table DynamoDB :
-  une ressource de moins à créer, à payer et à expliquer.
-- **Backend partiel** : le nom du bucket (qui contient l'identifiant du compte) n'est pas
-  dans le dépôt ; il est fourni par `backend.hcl` (ignoré par git).
+- **État Terraform local** (`terraform.tfstate`, ignoré par git) plutôt qu'un bucket S3 :
+  projet à un seul opérateur, et l'énoncé n'exige pas d'état distant. Le fichier survit à
+  `terraform destroy`, donc le cycle « destroy puis apply » fonctionne. *Limites assumées* :
+  pas de partage ni de verrou entre opérateurs, et l'état est perdu avec le poste (il faudrait
+  alors `terraform import` ou supprimer à la main les ressources). *Évolution en équipe* :
+  backend S3 avec `use_lockfile` (Terraform ≥ 1.10), le bucket étant créé hors du module détruit.
+  Le fichier contient des données sensibles : jamais commité (`.gitignore`).
 - **Région `eu-west-3` (Paris)** par défaut, modifiable par variable.
 - **Instance `t3.small`** (x86 : les images backends sont en amd64), modifiable. Passage à
   `t3.medium` si le nœud manque de mémoire (OOMKilled) : une ligne et un `apply`.
@@ -249,9 +246,8 @@ un jeton vers ce dépôt), ou un workflow ici qui lit les digests du compose de
 ### Validation (aucun appel à AWS)
 
 `terraform fmt -check`, `init -backend=false` avec lockfile en lecture seule et `validate`
-sur les deux modules (en local et dans la CI) ; Trivy config sans finding HIGH/CRITICAL.
-Findings de moindre gravité connus et non traités : journaux d'accès du bucket d'état (LOW)
-et VPC Flow Logs (MEDIUM, coût et volume disproportionnés ici).
+sur le module (en local et dans la CI) ; Trivy config sans finding HIGH/CRITICAL.
+Finding de moindre gravité connu et non traité : VPC Flow Logs (MEDIUM, coût et volume disproportionnés ici).
 `terraform plan` n'a **pas** été lancé : il interroge AWS et demande des identifiants.
 
 ### Difficultés rencontrées
@@ -259,8 +255,6 @@ et VPC Flow Logs (MEDIUM, coût et volume disproportionnés ici).
 - **Lockfile et architectures** : un `init` sur Mac Apple Silicon ne verrouille que
   `darwin_arm64` ; la CI (linux amd64) échouait sur le checksum. Résolution :
   `terraform providers lock` pour `linux_amd64`, `linux_arm64` et `darwin_arm64`.
-- **Règle Trivy AWS-0132** (clé KMS gérée par le client) : refusée pour des raisons de coût
-  (≈ 1 $/mois) ; SSE-S3 retenu, exception justifiée dans le code.
 - **Commentaire d'étape YAML** : un « : » dans un nom d'étape de workflow cassait le YAML.
 
 ## Décision — pas d'Ansible côté AWS

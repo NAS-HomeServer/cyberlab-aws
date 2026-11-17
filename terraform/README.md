@@ -1,11 +1,8 @@
 # Terraform
 
-Deux modules indépendants :
+Un seul module, `main/` : VPC, sous-réseau public, groupe de sécurité, instance EC2 (Ubuntu 24.04), rôle IAM, IP élastique, budget. Il se détruit et se recrée à volonté.
 
-| Module | Rôle | Cycle de vie |
-|---|---|---|
-| `bootstrap/` | Bucket S3 de l'état Terraform (versionné, chiffré, jamais public, protégé par `prevent_destroy`) | Créé **une fois**, jamais détruit |
-| `main/` | VPC, sous-réseau public, groupe de sécurité, instance EC2 (Ubuntu 24.04), rôle IAM, IP élastique, budget | Détruit et recréé à volonté |
+**État local** : Terraform garde la correspondance code ↔ ressources AWS dans `main/terraform.tfstate` (ignoré par git, il peut contenir des données sensibles). Ce fichier survit à `terraform destroy`, ce qui permet de reconstruire. À conserver sur le poste : sans lui, Terraform ne retrouve plus ce qu'il a créé.
 
 Ressources créées par `main/` : un VPC (`10.20.0.0/16`), une passerelle Internet, un sous-réseau public (**pas de NAT Gateway**), un groupe de sécurité, une instance `t3.medium` (disque gp3 20 Go chiffré), un rôle IAM limité à Systems Manager, une IP élastique et un budget mensuel avec alertes.
 
@@ -14,32 +11,20 @@ Ressources créées par `main/` : un VPC (`10.20.0.0/16`), une passerelle Intern
 - Terraform ≥ 1.10, AWS CLI configuré (profil habituel), région `eu-west-3` par défaut.
 - Une clé SSH dédiée (`ssh-keygen -t ed25519 -f ~/.ssh/cyberlab-aws`).
 
-## 1. Créer le bucket d'état (une seule fois)
-
-```bash
-cd terraform/bootstrap
-terraform init
-terraform apply          # crée UN bucket S3 (quelques centimes par mois)
-terraform output state_bucket
-```
-
-L'état de ce module reste **local** (`terraform.tfstate`, ignoré par git). Il ne décrit qu'un bucket : s'il est perdu, `terraform import aws_s3_bucket.state <nom>` le rattache.
-
-## 2. Créer l'infrastructure
+## 1. Créer l'infrastructure
 
 ```bash
 cd terraform/main
-cp backend.hcl.example backend.hcl            # y reporter le nom du bucket
 cp terraform.tfvars.example terraform.tfvars  # clé publique, votre IP en /32, e-mail du budget
-terraform init -backend-config=backend.hcl
+terraform init
 terraform plan                                # relire : rien ne doit être détruit par surprise
 terraform apply                               # ⚠ crée des ressources facturées (instance, IP élastique)
 terraform output
 ```
 
-`backend.hcl` et `terraform.tfvars` sont ignorés par git. Aucun secret n'est versionné.
+`terraform.tfvars` et `terraform.tfstate` sont ignorés par git. Aucun secret n'est versionné.
 
-## 2 bis. Donner la clé age à l'instance (une seule fois, hors Terraform)
+## 2. Donner la clé age à l'instance (une seule fois, hors Terraform)
 
 Au premier démarrage, l'instance a besoin de la clé privée age pour déchiffrer les secrets. Elle la lit dans AWS Systems Manager Parameter Store ; elle n'est jamais dans le dépôt, ni dans `user_data`, ni dans l'état Terraform.
 
@@ -50,11 +35,11 @@ aws --region eu-west-3 ssm put-parameter --name /cyberlab-aws/age-key --type Sec
 
 Ce paramètre n'est pas détruit par `terraform destroy` (il n'est pas géré par Terraform) : à ne faire qu'une fois. Coût : nul (paramètre standard).
 
-## 2 quater. Clé Tailscale (lien privé vers le NAS, une seule fois)
+## 3. Clé Tailscale (lien privé vers le NAS, une seule fois)
 
 Même principe que la clé age : un paramètre SSM, créé à la main, lu par l'instance au premier démarrage. La création de la clé et les règles ACL sont décrites dans [docs/changements-nas-monitoring.md](../docs/changements-nas-monitoring.md) (§1). Sans ce paramètre l'instance démarre normalement, mais la supervision ne remonte pas au NAS (un avertissement apparaît dans le journal de bootstrap).
 
-## 2 ter. Ce que fait l'instance au premier démarrage
+## 4. Ce que fait l'instance au premier démarrage
 
 `scripts/bootstrap-node.sh` (cloud-init, environ 3 minutes mesurées), journal dans `/var/log/cyberlab-bootstrap.log` :
 
@@ -83,15 +68,15 @@ sudo kubectl -n argocd get applications        # cyberlab-staging, cyberlab-prod
 sudo kubectl -n cyberlab-production get pods   # 3 backends + 3 tunnels Running
 ```
 
-## 3. Fin de démonstration
+## 5. Fin de démonstration
 
-`terraform destroy` supprime tout (l'IP élastique est libérée, une nouvelle est attribuée au `apply` suivant : `terraform output public_ip` l'affiche). Le bucket d'état et les paramètres SSM sont conservés.
+`terraform destroy` supprime tout (l'IP élastique est libérée, une nouvelle est attribuée au `apply` suivant : `terraform output public_ip` l'affiche). Le fichier d'état local et les paramètres SSM sont conservés.
 
 ## Choix de sécurité à connaître
 
 - **Aucun port entrant public.** SSH (22) n'est ouvert que depuis `ssh_allowed_cidrs` (jamais `0.0.0.0/0`, refusé par une validation). Liste vide : accès uniquement par AWS Systems Manager (Session Manager). Le trafic des backends arrive par les tunnels cloudflared, qui sont des connexions **sortantes**.
 - **Sorties ouvertes** (choix assumé, voir `docs/notes-projet.md`) : sherlock et dns-analyzer interrogent des cibles et des ports choisis par l'utilisateur.
 - **IMDSv2 obligatoire, hop limit 1** : un pod ne peut pas lire les métadonnées de l'instance (protection contre le vol d'identifiants par SSRF). Le rôle IAM n'a de toute façon que les droits Systems Manager.
-- **Disque chiffré**, état chiffré et versionné, jamais d'accès public au bucket.
+- **Disque chiffré**, fichier d'état jamais commité.
 - **Pas de NAT Gateway** (≈ 35 $/mois à elle seule) : l'instance est dans un sous-réseau public, protégée par son groupe de sécurité.
 - **`ignore_changes = [ami]`** : une nouvelle AMI Ubuntu ne remplace pas l'instance existante ; on ne change d'image qu'en recréant volontairement.
