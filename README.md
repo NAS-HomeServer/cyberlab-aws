@@ -158,6 +158,45 @@ docs/                                                    # gitops, test de recon
 
 Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers temporaires dans `/tmp`) : aucun volume n'est nécessaire.
 
+## À quoi sert chaque script
+
+### Au quotidien (sur ton poste)
+
+| Script | Rôle | Quand l'utiliser |
+|---|---|---|
+| `scripts/instance.sh` | arrête, démarre, donne l'état ou l'IP de l'instance, sans la détruire | `start` / `stop` chaque jour pour ne pas payer pour rien |
+| `scripts/verify-rebuild.sh` | contrôle complet d'une instance (11 vérifications, dont l'arrivée des métriques sur le NAS) | après un `terraform apply`, ou avant une démonstration |
+| `scripts/promote.sh` | copie les digests d'images de staging vers production (aucun commit, aucun réseau) | pour promouvoir : on relit le diff, puis on ouvre une PR |
+| `scripts/secrets.sh` | gère les secrets chiffrés : `keygen`, `init`, `set`, `edit`, `check`, `apply` | pour créer ou modifier un secret sans jamais l'écrire en clair |
+
+### Lancés automatiquement (tu n'as rien à faire)
+
+| Script | Rôle | Lancé par |
+|---|---|---|
+| `scripts/bootstrap-node.sh` | installe K3s, Argo CD, Tailscale, déchiffre et applique les secrets, crée les 3 applications Argo CD | cloud-init, une seule fois au premier démarrage de l'instance |
+| `ci/sync-digests.sh` | aligne les digests de staging sur ceux de `cyberlab-infra` (lecture seule) | workflow `Sync digests`, toutes les 6 h |
+| `ci/render.sh` | transforme chaque overlay Kustomize en un YAML complet, celui que le cluster recevra | la CI, avant kubeconform et Trivy |
+| `ci/verify-signatures.sh` | vérifie la signature Cosign de chaque image backend | la CI (contrôle Security) |
+| `ci/scan-images.sh` | scanne les vulnérabilités des images avec Trivy (informatif, ne bloque jamais) | la CI (contrôle Security) |
+| `ci/check-secrets-encrypted.sh` | refuse tout secret qui ne serait pas chiffré par SOPS | la CI (contrôle Security) |
+| `nas-monitoring/check-rules.sh` | valide la syntaxe des règles d'alerte du NAS et leurs tests unitaires | la CI (contrôle Code Quality) |
+
+### Bibliothèque (ne se lance pas seule)
+
+| Script | Rôle |
+|---|---|
+| `scripts/lib-digests.sh` | fonctions partagées pour lire et écrire les digests dans les `kustomization.yaml` ; utilisée par `promote.sh` et `sync-digests.sh` |
+
+### Tests locaux sur kind (aucun appel à AWS)
+
+| Script | Ce qu'il prouve |
+|---|---|
+| `k8s/kind/test.sh` | déploiement complet : backends répondent sur `/health`, les séries de l'agent arrivent sur un faux NAS avec les bons labels |
+| `k8s/kind/test-resilience.sh` | si la liaison avec le NAS est coupée puis rétablie, l'agent rattrape son retard sans trou dans les séries |
+| `k8s/kind/test-argocd.sh` | Argo CD déploie depuis GitHub, annule une modification manuelle (selfHeal) et recrée une ressource supprimée |
+| `k8s/kind/test-secrets.sh` | la chaîne SOPS + age fonctionne de bout en bout, avec une clé jetable |
+| `k8s/kind/check-agent-config.sh` | la configuration du Prometheus Agent est valide (`promtool`) |
+
 ## Tester en local (aucun appel à AWS)
 
 Prérequis : Docker, [kind](https://kind.sigs.k8s.io/), `kubectl`.
