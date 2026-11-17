@@ -156,7 +156,7 @@ Les 3 backends sont construits et publiés dans le registre GitHub (**ghcr.io**)
 
 - **Une image est toujours désignée par son digest** (`@sha256:…`) et non par une étiquette comme `latest` : l'image déployée est exactement celle qui a été validée. Les digests sont écrits dans `k8s/cyberlab/overlays/{staging,production}/kustomization.yaml`.
 - **Chaque dépôt de backend signe son image** (Cosign, sans clé, via son workflow GitHub). La CI de ce dépôt vérifie la signature (`ci/verify-signatures.sh`) : une image non signée par le bon dépôt bloque la fusion.
-- **Pour déployer une nouvelle version** : le dépôt du backend publie l'image, on écrit son digest dans l'overlay staging (une pull request), puis on le promeut en production (`scripts/promote.sh`). Voir [docs/gitops.md](docs/gitops.md).
+- **Pour déployer une nouvelle version** : le dépôt du backend publie l'image, on écrit son digest dans l'overlay staging (une pull request), puis on recopie ce digest dans l'overlay production (une seconde pull request). Voir [docs/gitops.md](docs/gitops.md).
 
 ## Installation complète
 
@@ -177,21 +177,19 @@ Prérequis sur le poste : Terraform ≥ 1.10, AWS CLI configuré, [age](https://
    L'instance s'installe seule (environ 3 minutes) : K3s, Argo CD, secrets, Tailscale, puis le déploiement par Git.
 7. **Vérifier** : sur l'instance, `sudo kubectl -n argocd get applications` doit montrer les 3 applications `Synced` et `Healthy` (commandes détaillées dans [docs/test-reconstruction.md](docs/test-reconstruction.md)).
 
-### Au quotidien
+### Fin de démonstration
 
 ```bash
-scripts/instance.sh stop      # arrête l'instance : plus de facturation de calcul
-scripts/instance.sh start     # la redémarre ; K3s relance tout, l'IP ne change pas
-terraform -chdir=terraform/main destroy    # tout détruire (test de reconstruction uniquement)
+terraform -chdir=terraform/main destroy    # tout détruire (fin de démonstration : plus rien n'est facturé)
 ```
 
-Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage (tarif à vérifier dans la console AWS) ; arrêtée, il ne reste que le disque et l'IP élastique. Un budget mensuel avec alertes e-mail est créé par Terraform.
+Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage (tarif à vérifier dans la console AWS) ; après un `destroy`, plus rien n'est facturé. Un budget mensuel avec alertes e-mail est créé par Terraform.
 
 ## Exploiter le cyberlab
 
 | Besoin | Commande / page |
 |---|---|
-| Promouvoir staging → production | `scripts/promote.sh`, puis PR → [docs/gitops.md](docs/gitops.md) |
+| Promouvoir staging → production | recopier le digest dans l'overlay production, via une PR → [docs/gitops.md](docs/gitops.md) |
 | Revenir en arrière | `git revert` du commit de fusion, via une PR → [docs/gitops.md](docs/gitops.md) |
 | Voir l'état du déploiement | `sudo kubectl -n argocd get applications` (sur l'instance), ou l'interface Argo CD par tunnel SSH |
 | Déclencher une alerte pour la démonstration | [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) §5 |
@@ -210,8 +208,6 @@ terraform/{bootstrap,main}                               # bucket d'état (à pa
 secrets/                                                 # secrets chiffrés (SOPS + age) par environnement
 scripts/
 ├── bootstrap-node.sh                                    # cloud-init : K3s, Argo CD, secrets, Tailscale, Applications
-├── instance.sh                                          # arrêter / démarrer l'instance
-├── promote.sh                                           # promotion staging → production
 └── secrets.sh                                           # gestion des secrets chiffrés
 nas-monitoring/                                          # règles d'alerte pour le Prometheus du NAS + tests promtool
 ci/                                                      # scripts de la CI (rendu, signatures Cosign, scan, synchro des digests)
@@ -227,8 +223,6 @@ Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers
 
 | Script | Rôle | Quand l'utiliser |
 |---|---|---|
-| `scripts/instance.sh` | arrête, démarre, donne l'état ou l'IP de l'instance, sans la détruire | `start` / `stop` chaque jour pour ne pas payer pour rien |
-| `scripts/promote.sh` | copie les digests d'images de staging vers production (aucun commit, aucun réseau) | pour promouvoir : on relit le diff, puis on ouvre une PR |
 | `scripts/secrets.sh` | gère les secrets chiffrés : `keygen`, `init`, `set`, `edit`, `check`, `apply` | pour créer ou modifier un secret sans jamais l'écrire en clair |
 
 ### Lancés automatiquement (tu n'as rien à faire)

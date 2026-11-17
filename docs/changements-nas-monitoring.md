@@ -79,7 +79,7 @@ curl -X POST http://localhost:9090/-/reload     # --web.enable-lifecycle est dé
 | `AwsContainerHighMemory` | un conteneur dépasse 85 % de sa limite mémoire pendant 5 min | warning |
 | `AwsNodeLowMemory` | moins de 10 % de mémoire disponible sur l'instance pendant 10 min | warning |
 
-Elles partent par ton Alertmanager existant, vers Discord, sans changement de sa configuration. **Il n'y a pas d'alerte « métriques absentes »** : l'instance est arrêtée chaque soir, elle sonnerait tous les jours.
+Elles partent par ton Alertmanager existant, vers Discord, sans changement de sa configuration. **Il n'y a pas d'alerte « métriques absentes »** : l'instance n'est allumée que pour les démonstrations, l'alerte sonnerait en permanence.
 
 Les règles sont vérifiées par `yamllint` dans la CI (les tests unitaires `promtool` ont été retirés pour simplifier).
 
