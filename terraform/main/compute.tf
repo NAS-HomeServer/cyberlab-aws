@@ -25,6 +25,7 @@ resource "aws_instance" "node" {
     export REPO_REF='${var.repo_ref}'
     export AWS_REGION='${var.region}'
     export AGE_PARAM='${var.age_key_parameter}'
+    export TS_PARAM='${var.tailscale_authkey_parameter}'
     ${file("${path.module}/../../scripts/bootstrap-node.sh")}
   EOT
   # Changer le script ou ses parametres recree l'instance : l'etat voulu est toujours

@@ -418,3 +418,45 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
   (il faudrait un serveur Git dans le cluster) : ils se vérifient en démonstration sur AWS.
 - Le premier démarrage réel du bootstrap complet (étape 7) reste à valider sur AWS ; la
   supervision enverra ses métriques vers une URL provisoire jusqu'à l'étape suivante.
+
+## Étape 7 — Lien avec le NAS (Tailscale, remote_write, alertes)
+
+### Ce qui a été fait
+
+- **Transport : Tailscale**, déjà en place sur le NAS (`100.104.202.81`). L'instance l'installe au
+  bootstrap (version et SHA-256 épinglés), avec une clé d'authentification lue dans SSM
+  (`/cyberlab-aws/tailscale-authkey`, même mécanisme que la clé age) ; l'agent écrit sur
+  `http://100.104.202.81:9090/api/v1/write`.
+- Règles d'alerte pour le Prometheus du NAS (`nas-monitoring/cyberlab-aws.rules.yml`) et leurs
+  tests unitaires `promtool`, vérifiés par la CI. Guide des changements à appliquer sur le NAS :
+  `docs/changements-nas-monitoring.md` (le dépôt HomeServer-monitoring n'est pas modifié ici).
+
+### Choix et justifications
+
+- **Tailscale plutôt que tunnel cloudflared + Access** : déjà là, aucun port ouvert, accès limité
+  par ACL au seul port 9090 du NAS. Le tunnel + Access aurait exigé d'envoyer deux en-têtes
+  secrets avec chaque écriture ; Prometheus ne les lit pas dans un fichier, donc le secret
+  aurait fini dans la configuration ou nécessité un proxy en plus. Il aurait aussi exposé un
+  point d'écriture sur Internet, protégé seulement par Access.
+- **Clé Tailscale non éphémère** : une machine éphémère est retirée du tailnet pendant l'arrêt
+  du soir et ne pourrait pas se reconnecter au redémarrage (l'authentification n'a lieu qu'au
+  premier démarrage). Contrepartie : les anciennes instances restent listées après un destroy.
+- **Pas de DNS Tailscale** (`--accept-dns=false`) : les pods gardent le DNS du cluster.
+- **Bootstrap tolérant** : sans paramètre SSM, l'instance démarre quand même (avertissement dans
+  le journal), seule la supervision ne remonte pas.
+- **Alertes bornées à `cluster="aws-k3s"`** et jobs `aws-*` : aucune interaction avec les règles
+  existantes du NAS. Pas d'alerte « métriques absentes » : l'instance est arrêtée chaque soir.
+- **Démo d'alerte et Argo CD** : le selfHeal rétablit un backend mis à 0 en quelques secondes ;
+  pour la démo on suspend la synchronisation automatique de l'application, puis on la rétablit.
+
+### Difficultés et limites
+
+- **Bug trouvé par le test unitaire** : dans la règle mémoire, la jointure `on(...)` supprimait
+  les labels `env` et `cluster` (le résumé de l'alerte aurait affiché un environnement vide).
+  Corrigé avec `group_left`.
+- **Vérification des labels** sur de vraies séries : les expressions des règles (hors seuils)
+  ont été rejouées sur le faux NAS du test kind ; elles renvoient bien des séries.
+- **Non testé de bout en bout** : l'envoi réel vers le NAS, l'ACL Tailscale et le déclenchement
+  de l'alerte sur Discord demandent le NAS et AWS ; ils se vérifient au premier test réel.
+  Les commandes de suspension/rétablissement de la synchronisation Argo CD aussi.
+- **Clé Tailscale limitée à 90 jours** : à renouveler avant une reconstruction après ce délai.

@@ -1,5 +1,5 @@
 # Role de l'instance : AWS Systems Manager (acces de secours par Session Manager si SSH est
-# ferme ou injoignable) et lecture d'UN seul parametre SSM, la cle age (voir plus bas).
+# ferme ou injoignable) et lecture de DEUX parametres SSM precis (cle age, cle Tailscale ; voir plus bas).
 # Aucun droit sur S3, EC2 ni IAM :
 # un pod compromis qui atteindrait les metadonnees n'aurait rien d'exploitable
 # (et IMDSv2 avec hop limit 1 l'en empeche, voir compute.tf).
@@ -23,20 +23,24 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Lecture de la cle age, et d'elle seule : le bootstrap en a besoin pour dechiffrer les secrets.
+# Lecture de la cle age et de la cle d'authentification Tailscale, et d'elles seules : le bootstrap
+# en a besoin pour dechiffrer les secrets et rejoindre le reseau prive du NAS.
 # La cle est un SecureString chiffre par la cle AWS geree "aws/ssm", dont la politique autorise
 # deja le dechiffrement via SSM : aucun droit KMS a ajouter.
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "age_key" {
   statement {
-    actions   = ["ssm:GetParameter"]
-    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.age_key_parameter}"]
+    actions = ["ssm:GetParameter"]
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.age_key_parameter}",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.tailscale_authkey_parameter}",
+    ]
   }
 }
 
 resource "aws_iam_role_policy" "age_key" {
-  name   = "lecture-cle-age"
+  name   = "lecture-parametres-bootstrap"
   role   = aws_iam_role.node.id
   policy = data.aws_iam_policy_document.age_key.json
 }

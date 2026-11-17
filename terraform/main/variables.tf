@@ -69,3 +69,9 @@ variable "age_key_parameter" {
   type        = string
   default     = "/cyberlab-aws/age-key"
 }
+
+variable "tailscale_authkey_parameter" {
+  description = "Nom du parametre SSM (SecureString) qui contient la cle d'authentification Tailscale. Cree a la main, une fois ; absent, l'instance demarre sans lien vers le NAS."
+  type        = string
+  default     = "/cyberlab-aws/tailscale-authkey"
+}
