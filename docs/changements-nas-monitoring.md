@@ -81,7 +81,7 @@ curl -X POST http://localhost:9090/-/reload     # --web.enable-lifecycle est dé
 
 Elles partent par ton Alertmanager existant, vers Discord, sans changement de sa configuration. **Il n'y a pas d'alerte « métriques absentes »** : l'instance n'est allumée que pour les démonstrations, l'alerte sonnerait en permanence.
 
-Les règles sont vérifiées par `yamllint` dans la CI (les tests unitaires `promtool` ont été retirés pour simplifier).
+Les règles sont vérifiées par `yamllint` dans la CI.
 
 ## 4. Vérifier que ça marche
 

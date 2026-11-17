@@ -1,5 +1,0 @@
-# Copier en backend.hcl (ignore par git) puis :  terraform init -backend-config=backend.hcl
-# Le nom du bucket est affiche par "terraform output state_bucket" dans terraform/bootstrap.
-bucket = "cyberlab-aws-tfstate-123456789012"
-key    = "cyberlab-aws/main.tfstate"
-region = "eu-west-3"
