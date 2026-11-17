@@ -39,8 +39,9 @@ Conséquences :
   état durable. À noter dans le README (compétence « gérer le stockage de données » :
   la réponse est une décision argumentée, pas un volume inutile). Le seul stockage
   durable du projet est l'état Terraform (bucket S3 créé à part).
-- **Un seul réplica par backend** : les jobs vivent dans la mémoire du process, le
-  suivi d'un job doit retomber sur le même pod.
+- **Un seul réplica par backend** (sauf `dns-analyzer` en production, voir « Réplicas »
+  plus bas) : `audit-orchestrator` garde ses jobs dans la mémoire du process, le suivi d'un
+  job doit retomber sur le même pod.
 - **Tests avant mise en production** : aucun test unitaire dans les backends. Ce qui
   existe : lint + smoke test en CI. On le complète côté infra par la validation des
   manifestes (kubeconform, trivy, promtool), un test de bout en bout sur kind, et
@@ -509,3 +510,17 @@ Instance neuve créée par un seul `terraform apply` (aucune intervention ensuit
 
 - Promotion staging → production et `git revert` rejoués sur AWS (démonstration).
 - Workflow `Sync digests` : premier déclenchement réel (réglage de dépôt requis).
+
+## Réplicas : un seul partout, deux pour `dns-analyzer` en production
+
+- **Règle de départ : 1 réplica.** Un seul noeud K3s : trois réplicas tourneraient sur la même
+  machine (aucun gain si elle tombe) et ne tiendraient pas dans les 4 Go de la `t3.medium`.
+  Les mises à jour se font sans coupure (`maxSurge: 1`, `maxUnavailable: 0`).
+- **Exception : `dns-analyzer` a 2 réplicas en production**, par `replicas:` dans
+  `k8s/cyberlab/overlays/production/kustomization.yaml`. Choisi parce qu'il ne garde aucun état
+  entre deux requêtes ; `audit-orchestrator` (jobs en mémoire) et `sherlock` restent à 1. Staging
+  reste à 1 : la différence entre environnements est la seule du dépôt.
+- **Ce que cela montre** : le nombre de réplicas se règle par environnement dans l'overlay, par
+  une PR, appliqué par Argo CD. Limite connue : les deux réplicas partagent le même noeud.
+- À vérifier sur AWS : 2 pods `dns-analyzer` en production, mémoire de l'instance (`free -m`),
+  `verify-rebuild.sh` toujours OK.
