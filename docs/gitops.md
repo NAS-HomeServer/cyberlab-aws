@@ -3,11 +3,8 @@
 **Principe : Git est la seule source de vérité.** Personne ne lance `kubectl apply` pour déployer : on fusionne une pull request, Argo CD voit le changement et l'applique au cluster.
 
 ```
- backend reconstruit (son dépôt)
-        │  PR "bump/*" fusionnée dans cyberlab-infra (compose du NAS)
-        ▼
- workflow "Sync digests" (toutes les 6 h)          ← lecture seule sur cyberlab-infra
-        │  PR automatique : digests de STAGING
+ backend reconstruit (son dépôt) → nouveau digest d'image
+        │  PR : on met le digest dans l'overlay STAGING
         ▼
  CI (3 checks, dont signature Cosign de l'image) → fusion
         │
@@ -15,7 +12,7 @@
  Argo CD : application cyberlab-staging  → namespace cyberlab-staging
         │  validation en staging
         ▼
- scripts/promote.sh  → PR : mêmes digests dans PRODUCTION → CI → fusion
+ PR : on recopie les mêmes digests dans PRODUCTION → CI → fusion
         │
         ▼
  Argo CD : application cyberlab-production → namespace cyberlab-production
@@ -27,9 +24,6 @@
 |---|---|
 | `k8s/argocd/applications/*.yaml` | Une `Application` par cible : `cyberlab-staging`, `cyberlab-production`, `monitoring`. Elles surveillent un dossier de ce dépôt et appliquent son contenu (`prune` et `selfHeal` activés). |
 | `scripts/bootstrap-node.sh` | Étape 7 : crée ces `Application` au premier démarrage de l'instance, avec l'URL et la branche choisies dans Terraform (`repo_url`, `repo_ref`). |
-| `ci/sync-digests.sh` + `.github/workflows/sync-digests.yml` | Lit les digests du compose de `cyberlab-infra` et ouvre une PR qui aligne **staging**. |
-| `scripts/promote.sh` | Copie les digests de staging vers production. Aucun commit, aucun réseau : on relit le diff puis on ouvre la PR. |
-| `scripts/lib-digests.sh` | Lecture/écriture des digests dans les `kustomization.yaml` (partagé par les deux scripts). |
 
 Les **secrets** ne passent pas par Argo CD : ils sont appliqués une fois par le bootstrap (`secrets.sh apply`). Argo CD ne les gère pas, donc `prune` ne peut pas les supprimer.
 
@@ -38,7 +32,8 @@ Les **secrets** ne passent pas par Argo CD : ils sont appliqués une fois par le
 ```bash
 git switch main && git pull
 git switch -c promotion/<date>
-scripts/promote.sh                    # copie les digests de staging
+# recopier à la main les lignes « digest: sha256:… » de overlays/staging/kustomization.yaml
+# vers overlays/production/kustomization.yaml (mêmes images, mêmes digests)
 git diff k8s/cyberlab/overlays/production
 git commit -am "chore(production): promeut les images validées en staging"
 git push -u origin HEAD && gh pr create --base main
@@ -71,9 +66,3 @@ ssh -i ~/.ssh/cyberlab-aws ubuntu@<ip> "sudo kubectl -n argocd get secret argocd
 ```
 
 État en ligne de commande : `sudo kubectl -n argocd get applications`.
-
-## Réglage du dépôt à faire une fois
-
-Pour que le workflow « Sync digests » puisse ouvrir des PR : **Settings → Actions → General → Workflow permissions → « Allow GitHub Actions to create and approve pull requests »**.
-
-Une PR ouverte avec le jeton du workflow ne déclenche pas la CI ; le workflow la lance donc lui-même sur la branche (`workflow_dispatch`). Si les checks restent « en attente » sur cette PR, lancer *Actions → CI → Run workflow* sur la branche `sync/digests`.

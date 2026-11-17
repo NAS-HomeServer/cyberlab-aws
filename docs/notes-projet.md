@@ -128,7 +128,7 @@ Conséquences :
   séries de l'agent reçues par un faux NAS avec `cluster` et `env` corrects.
 - Scan Sherlock réel (nom d'utilisateur fictif) sous `readOnlyRootFilesystem` : fonctionne,
   le doute sur une écriture de `<user>.txt` est levé.
-- `k8s/kind/test-resilience.sh` : liaison coupée 90 s puis rétablie, aucun trou
+- Test de résilience (script retiré depuis, pour simplifier) : liaison coupée 90 s puis rétablie, aucun trou
   (écart max entre échantillons bruts = intervalle de scrape).
 
 ### Questions repoussées aux étapes suivantes
@@ -148,8 +148,8 @@ Conséquences :
 | Étape | Contrôles | Bloquant |
 |---|---|---|
 | ① Code Quality | yamllint `--strict`, shellcheck, rendu Kustomize puis kubeconform `-strict` (schémas Kubernetes), promtool sur la config de l'agent (overlays kind et aws) | oui |
-| ② Security | Gitleaks, signatures Cosign des images backends, Trivy config (HIGH/CRITICAL) sur les manifestes rendus, scan Trivy des images | tout sauf le scan des images |
-| ③ Tests (kind) | déploiement complet sur un cluster kind jetable, puis test de résilience du `remote_write` | oui |
+| ② Security | Gitleaks, signatures Cosign des images backends, Trivy config (HIGH/CRITICAL) sur les manifestes rendus, (le scan Trivy des images a été retiré de la CI pour simplifier) | oui |
+| ③ Tests (kind) | déploiement complet sur un cluster kind jetable, puis déploiement par Argo CD | oui |
 
 Principe : on valide ce que le cluster va réellement recevoir (la sortie de
 `kubectl kustomize`), pas les fichiers sources. C'est ce qui l'a justifié : les
@@ -238,8 +238,7 @@ un jeton vers ce dépôt), ou un workflow ici qui lit les digests du compose de
 - **IMDSv2 obligatoire avec hop limit 1** : un pod (un saut réseau de plus) ne peut pas lire
   les métadonnées de l'instance. Les backends effectuent des requêtes vers des cibles
   choisies par l'utilisateur (risque SSRF) ; c'est la parade côté infrastructure.
-- **IP élastique dans le module principal** : stable aux arrêts/démarrages (ce que fait
-  `scripts/instance.sh`), libérée par un `destroy`. Avec Tailscale, le lien avec le NAS ne
+- **IP élastique dans le module principal** : stable aux arrêts/démarrages, libérée par un `destroy`. Avec Tailscale, le lien avec le NAS ne
   dépend pas de l'IP publique. *Alternative écartée* : l'allouer dans le bootstrap pour
   qu'elle survive aux `destroy` (coût permanent, utile seulement si le NAS filtrait par IP).
 - **Budget** : alerte à 80 % du réel et 100 % du prévu, 15 $/mois par défaut ; l'adresse
@@ -330,7 +329,7 @@ Leçon : une PR par branche, toutes ouvertes directement sur `main`.
 
 ### Validation
 
-`k8s/kind/test-secrets.sh` : avec une clé **jetable**, dans un dépôt temporaire, `keygen`,
+Test (script retiré depuis, pour simplifier) : avec une clé **jetable**, dans un dépôt temporaire, `keygen`,
 `init`, `edit`, contrôle qu'aucune valeur n'est en clair, `apply` sur kind avec relecture de
 la valeur dans le cluster, et refus de déchiffrer avec une autre clé.
 
@@ -387,10 +386,11 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
 - Trois `Application` Argo CD (`k8s/argocd/applications/`) : staging, production, supervision.
   Sync automatique avec `prune` et `selfHeal`. Créées par le bootstrap (étape 7 du script), avec
   l'URL et la branche de Terraform (`repo_url`, `repo_ref`) réécrites par `sed`.
-- Promotion : `scripts/promote.sh` copie les digests de staging vers production ; la
-  production ne reçoit jamais directement une image.
-- Synchronisation des digests (**option A** retenue) : `ci/sync-digests.sh` lit le compose de
-  `cyberlab-infra` (lecture seule) et le workflow `sync-digests.yml` ouvre une PR sur staging.
+- Promotion : les digests de staging sont recopiés vers production par une PR (un script
+  `promote.sh` avait été écrit, retiré depuis pour simplifier) ; la production ne reçoit
+  jamais directement une image.
+- Synchronisation des digests : un workflow automatique avait été écrit, puis retiré pour
+  simplifier ; le digest de staging se met à jour par une PR manuelle.
 - Rollback : `git revert` de la fusion fautive ; Argo CD réapplique l'ancien digest.
 - Test `k8s/kind/test-argocd.sh` : Argo CD (même version et même empreinte que le bootstrap,
   lues dans le script) clone ce dépôt sur GitHub et déploie l'overlay kind ; on vérifie
@@ -428,8 +428,8 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
   bootstrap (version et SHA-256 épinglés), avec une clé d'authentification lue dans SSM
   (`/cyberlab-aws/tailscale-authkey`, même mécanisme que la clé age) ; l'agent écrit sur
   `http://100.104.202.81:9090/api/v1/write`.
-- Règles d'alerte pour le Prometheus du NAS (`nas-monitoring/cyberlab-aws.rules.yml`) et leurs
-  tests unitaires `promtool`, vérifiés par la CI. Guide des changements à appliquer sur le NAS :
+- Règles d'alerte pour le Prometheus du NAS (`nas-monitoring/cyberlab-aws.rules.yml`) (les tests unitaires
+  `promtool` ont été retirés depuis, pour simplifier). Guide des changements à appliquer sur le NAS :
   `docs/changements-nas-monitoring.md` (le dépôt HomeServer-monitoring n'est pas modifié ici).
 
 ### Choix et justifications
@@ -446,7 +446,7 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
 - **Bootstrap tolérant** : sans paramètre SSM, l'instance démarre quand même (avertissement dans
   le journal), seule la supervision ne remonte pas.
 - **Alertes bornées à `cluster="aws-k3s"`** et jobs `aws-*` : aucune interaction avec les règles
-  existantes du NAS. Pas d'alerte « métriques absentes » : l'instance est arrêtée chaque soir.
+  existantes du NAS. Pas d'alerte « métriques absentes » : l'instance n'est allumée que pour les démonstrations.
 - **Démo d'alerte et Argo CD** : le selfHeal rétablit un backend mis à 0 en quelques secondes ;
   pour la démo on suspend la synchronisation automatique de l'application, puis on la rétablit.
 
@@ -480,7 +480,7 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
 
 - `docs/test-reconstruction.md` : procédure `terraform destroy` puis `apply` (ce qui est détruit,
   ce qui est conservé, durée à mesurer, dépannage).
-- `scripts/verify-rebuild.sh` : vérifie depuis le poste, par SSH, le bootstrap, K3s, les 3
+- `scripts/verify-rebuild.sh` (script retiré depuis, pour simplifier) : vérifiait depuis le poste, par SSH, le bootstrap, K3s, les 3
   applications Argo CD, les 6 deployments par namespace, l'absence de la clé age sur le disque,
   Tailscale et, surtout, interroge le Prometheus **du NAS depuis l'instance** pour confirmer que
   les 6 jobs `aws-*` arrivent bien. Chaque contrôle réessaie jusqu'à un délai : on le lance dès
@@ -500,7 +500,7 @@ Instance neuve créée par un seul `terraform apply` (aucune intervention ensuit
 
 - instance lancée à 14:14:11 UTC, bootstrap terminé à 14:16:56 UTC : **2 min 45 s**
   (étapes : paquets 35 s, Argo CD 1 min 04 s, secrets 11 s, Tailscale 3 s) ;
-- `scripts/verify-rebuild.sh` : **11 contrôles sur 11 OK** (3 applications Argo CD
+- `scripts/verify-rebuild.sh` (retiré depuis) : **11 contrôles sur 11 OK** (3 applications Argo CD
   `Synced/Healthy`, 6 deployments par namespace, secrets présents, clé age supprimée,
   Tailscale connecté, 6 jobs `aws-*` reçus par le Prometheus du NAS).
 - Les deux correctifs du bootstrap (PR #13 : clé Tailscale par fichier, PR #15 : SIGPIPE) sont
@@ -509,7 +509,6 @@ Instance neuve créée par un seul `terraform apply` (aucune intervention ensuit
 ### Reste à confirmer
 
 - Promotion staging → production et `git revert` rejoués sur AWS (démonstration).
-- Workflow `Sync digests` : premier déclenchement réel (réglage de dépôt requis).
 
 ## Réplicas : un seul partout, deux pour `dns-analyzer` en production
 
@@ -523,4 +522,4 @@ Instance neuve créée par un seul `terraform apply` (aucune intervention ensuit
 - **Ce que cela montre** : le nombre de réplicas se règle par environnement dans l'overlay, par
   une PR, appliqué par Argo CD. Limite connue : les deux réplicas partagent le même noeud.
 - À vérifier sur AWS : 2 pods `dns-analyzer` en production, mémoire de l'instance (`free -m`),
-  `verify-rebuild.sh` toujours OK.
+  contrôle de la reconstruction toujours OK.

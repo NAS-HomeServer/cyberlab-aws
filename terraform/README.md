@@ -83,14 +83,9 @@ sudo kubectl -n argocd get applications        # cyberlab-staging, cyberlab-prod
 sudo kubectl -n cyberlab-production get pods   # 3 backends + 3 tunnels Running
 ```
 
-## 3. Au quotidien : arrêter, ne pas détruire
+## 3. Fin de démonstration
 
-```bash
-scripts/instance.sh stop     # plus de facturation de calcul ; K3s repart tout seul au start
-scripts/instance.sh start    # attend que l'instance soit prête ; l'IP ne change pas
-```
-
-`terraform destroy` est réservé au test de reconstruction : l'IP élastique est alors libérée et une nouvelle est attribuée au `apply` suivant (`terraform output public_ip` l'affiche).
+`terraform destroy` supprime tout (l'IP élastique est libérée, une nouvelle est attribuée au `apply` suivant : `terraform output public_ip` l'affiche). Le bucket d'état et les paramètres SSM sont conservés.
 
 ## Choix de sécurité à connaître
 

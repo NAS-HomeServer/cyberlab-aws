@@ -1,5 +1,5 @@
 output "instance_id" {
-  description = "Identifiant de l'instance (arret/demarrage : scripts/instance.sh)."
+  description = "Identifiant de l'instance."
   value       = aws_instance.node.id
 }
 
