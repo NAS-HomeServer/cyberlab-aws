@@ -378,3 +378,43 @@ la valeur dans le cluster, et refus de déchiffrer avec une autre clé.
 
 Statique : shellcheck, `terraform fmt/validate`, Trivy. Le bootstrap lui-même n'est **pas**
 testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage réel est le test.
+
+## Étape 6 — GitOps : Argo CD, promotion, rollback
+
+### Ce qui a été fait
+
+- Trois `Application` Argo CD (`k8s/argocd/applications/`) : staging, production, supervision.
+  Sync automatique avec `prune` et `selfHeal`. Créées par le bootstrap (étape 7 du script), avec
+  l'URL et la branche de Terraform (`repo_url`, `repo_ref`) réécrites par `sed`.
+- Promotion : `scripts/promote.sh` copie les digests de staging vers production ; la
+  production ne reçoit jamais directement une image.
+- Synchronisation des digests (**option A** retenue) : `ci/sync-digests.sh` lit le compose de
+  `cyberlab-infra` (lecture seule) et le workflow `sync-digests.yml` ouvre une PR sur staging.
+- Rollback : `git revert` de la fusion fautive ; Argo CD réapplique l'ancien digest.
+- Test `k8s/kind/test-argocd.sh` : Argo CD (même version et même empreinte que le bootstrap,
+  lues dans le script) clone ce dépôt sur GitHub et déploie l'overlay kind ; on vérifie
+  Synced + Healthy, le selfHeal et la recréation d'une ressource supprimée. Ajouté à la CI.
+
+### Choix et justifications
+
+- **Pas d'app-of-apps** : trois `Application` appliquées par le bootstrap suffisent et
+  permettent de tester une branche (`repo_ref`) sans modifier les fichiers. Ajouter une
+  application demande donc de relancer le bootstrap (ou un `kubectl apply`) : acceptable ici.
+- **Une branche, deux dossiers** : staging et production suivent `main` mais des dossiers
+  différents (`overlays/staging`, `overlays/production`). La promotion est une PR, donc relue
+  et soumise aux 3 checks (dont la signature Cosign des images).
+- **Option A pour les digests** : les 3 CI de backends restent intactes et `cyberlab-infra`
+  n'est jamais modifié. Contrepartie : un délai (cron toutes les 6 h, déclenchable à la main).
+- **Secrets hors Argo CD** : appliqués par le bootstrap, donc jamais élagués (`prune`) et
+  jamais dans le dépôt en clair.
+- **Rollback par Git** plutôt que par l'interface : seul le revert laisse une trace durable.
+
+### Difficultés et limites
+
+- Une PR ouverte par `GITHUB_TOKEN` ne déclenche pas la CI : le workflow lance `ci.yml` à la
+  main sur la branche (`workflow_dispatch`). Réglage de dépôt requis (voir docs/gitops.md).
+  **À confirmer au premier déclenchement réel.**
+- Le test de bascule staging → production et le `git revert` ne sont pas rejoués sur kind
+  (il faudrait un serveur Git dans le cluster) : ils se vérifient en démonstration sur AWS.
+- Le premier démarrage réel du bootstrap complet (étape 7) reste à valider sur AWS ; la
+  supervision enverra ses métriques vers une URL provisoire jusqu'à l'étape suivante.
