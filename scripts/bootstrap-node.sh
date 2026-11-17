@@ -8,12 +8,14 @@
 #   REPO_URL, REPO_REF   depot public a cloner et sa reference (branche ou tag)
 #   AWS_REGION           region AWS (lecture de la cle age)
 #   AGE_PARAM            nom du parametre SSM SecureString qui contient la cle privee age
+#   TS_PARAM             nom du parametre SSM SecureString qui contient la cle d'authentification Tailscale
+#                        (optionnel : absent, l'instance demarre sans lien vers le NAS)
 #
 # Tout ce qui est telecharge est epingle par version ET verifie par empreinte SHA-256 :
 # une release modifiee apres coup fait echouer le bootstrap au lieu de s'executer.
 set -euo pipefail
 
-: "${REPO_URL:?}" "${REPO_REF:?}" "${AWS_REGION:?}" "${AGE_PARAM:?}"
+: "${REPO_URL:?}" "${REPO_REF:?}" "${AWS_REGION:?}" "${AGE_PARAM:?}" "${TS_PARAM:?}"
 
 K3S_VERSION="v1.33.13+k3s1"
 K3S_INSTALL_SHA256="9ca7930c31179d83bc13de20078fd8ad3e1ee00875b31f39a7e524ca4ef7d9de"
@@ -21,6 +23,8 @@ ARGOCD_VERSION="v3.6.1"
 ARGOCD_SHA256="7be23ca7d9ca3d3074dee8332f1ca92a933b990cee7c9cf22cf3843ee8c2913e"
 SOPS_VERSION="v3.13.3"
 SOPS_SHA256="e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b"
+TAILSCALE_VERSION="1.104.7"
+TAILSCALE_SHA256="e56693ff74a64f2591b7e819c280635a100aae1ddfb0ef058fcd052b7cd8d16c"
 
 LOG=/var/log/cyberlab-bootstrap.log
 DONE=/var/lib/cyberlab-bootstrap.done
@@ -54,18 +58,18 @@ fetch() {
   echo "$3  $2" | sha256sum -c -
 }
 
-log "1/7 Paquets de base"
+log "1/8 Paquets de base"
 retry apt-get update -qq
 retry apt-get install -y -qq git curl ca-certificates
 
-log "2/7 AWS CLI (lecture de la cle age dans SSM)"
+log "2/8 AWS CLI (lecture de la cle age dans SSM)"
 command -v aws > /dev/null || retry snap install aws-cli --classic
 
-log "3/7 SOPS $SOPS_VERSION"
+log "3/8 SOPS $SOPS_VERSION"
 fetch "https://github.com/getsops/sops/releases/download/$SOPS_VERSION/sops-$SOPS_VERSION.linux.amd64" "$WORK/sops" "$SOPS_SHA256"
 install -m 0755 "$WORK/sops" /usr/local/bin/sops
 
-log "4/7 K3s $K3S_VERSION"
+log "4/8 K3s $K3S_VERSION"
 # Sans traefik (pas d'ingress : le trafic arrive par les tunnels cloudflared), sans servicelb
 # ni metrics-server : memoire economisee sur une petite instance.
 fetch "https://raw.githubusercontent.com/k3s-io/k3s/${K3S_VERSION/+/%2B}/install.sh" "$WORK/k3s-install.sh" "$K3S_INSTALL_SHA256"
@@ -76,7 +80,7 @@ for _ in $(seq 1 60); do
 done
 kubectl wait --for=condition=Ready node --all --timeout=10s
 
-log "5/7 Argo CD $ARGOCD_VERSION"
+log "5/8 Argo CD $ARGOCD_VERSION"
 fetch "https://raw.githubusercontent.com/argoproj/argo-cd/$ARGOCD_VERSION/manifests/install.yaml" "$WORK/argocd.yaml" "$ARGOCD_SHA256"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 # server-side : les CRD d'Argo CD depassent la taille acceptee par un apply classique.
@@ -87,7 +91,7 @@ kubectl -n argocd rollout status deployment/argocd-server --timeout=300s
 kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=300s
 kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
 
-log "6/7 Secrets (cle age lue dans SSM, jamais ecrite dans le depot)"
+log "6/8 Secrets (cle age lue dans SSM, jamais ecrite dans le depot)"
 rm -rf /opt/cyberlab-aws
 retry git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" /opt/cyberlab-aws
 export SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt
@@ -102,7 +106,29 @@ done
 # Les Secrets vivent desormais dans le cluster : la cle privee n'a plus de raison de rester sur le disque.
 shred -u "$SOPS_AGE_KEY_FILE"
 
-log "7/7 Applications Argo CD (le deploiement est ensuite pilote par Git)"
+log "7/8 Tailscale $TAILSCALE_VERSION (lien prive vers le NAS pour le remote_write)"
+# Cle d'authentification : parametre SSM cree a la main, jamais dans le depot. Sans elle, on continue :
+# le cluster fonctionne, seule la supervision ne remonte pas au NAS.
+if ts_key="$(aws --region "$AWS_REGION" ssm get-parameter --name "$TS_PARAM" --with-decryption --query Parameter.Value --output text 2> /dev/null)"; then
+  fetch "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz" "$WORK/tailscale.tgz" "$TAILSCALE_SHA256"
+  tar -xzf "$WORK/tailscale.tgz" -C "$WORK"
+  ts_dir="$WORK/tailscale_${TAILSCALE_VERSION}_amd64"
+  install -m 0755 "$ts_dir/tailscaled" /usr/sbin/tailscaled
+  install -m 0755 "$ts_dir/tailscale" /usr/bin/tailscale
+  install -m 0644 "$ts_dir/systemd/tailscaled.service" /etc/systemd/system/tailscaled.service
+  install -m 0644 "$ts_dir/systemd/tailscaled.defaults" /etc/default/tailscaled
+  systemctl daemon-reload
+  # enable : tailscaled repart seul apres chaque arret/demarrage de l'instance (etat dans /var/lib/tailscale).
+  systemctl enable --now tailscaled
+  # Pas de DNS Tailscale (les pods gardent le DNS du cluster) ; etiquette pour limiter l'acces par ACL.
+  TS_AUTHKEY="$ts_key" tailscale up --hostname=cyberlab-aws --accept-dns=false --advertise-tags=tag:cyberlab-aws
+  unset ts_key
+  tailscale status | head -5
+else
+  log "ATTENTION : parametre $TS_PARAM introuvable, Tailscale non installe (la supervision ne remontera pas au NAS)."
+fi
+
+log "8/8 Applications Argo CD (le deploiement est ensuite pilote par Git)"
 # repoURL et targetRevision des Applications sont reecrits avec les variables Terraform,
 # pour pouvoir tester une branche avant fusion (repo_ref).
 for app in /opt/cyberlab-aws/k8s/argocd/applications/*.yaml; do

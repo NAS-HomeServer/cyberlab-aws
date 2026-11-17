@@ -4,7 +4,7 @@ Migration du cyberlab (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrato
 
 Le NAS reste la production tant que la bascule n'est pas décidée : son dépôt, [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra), n'est pas modifié. La supervision (Prometheus, Grafana, Alertmanager) reste dans [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring).
 
-> État : étape 6 sur 7 (manifestes validés par la CI, infrastructure AWS en Terraform, secrets chiffrés, bootstrap de l'instance, déploiement GitOps par Argo CD avec promotion staging → production et rollback par `git revert`, voir [docs/gitops.md](docs/gitops.md)). La liaison avec le NAS et le test de reconstruction arrivent par petites PR, une par étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
+> État : étape 7 sur 8 (manifestes validés par la CI, infrastructure AWS en Terraform, secrets chiffrés, bootstrap de l'instance, déploiement GitOps par Argo CD avec promotion staging → production et rollback par `git revert`, voir [docs/gitops.md](docs/gitops.md)). Supervision : l'agent Prometheus envoie ses métriques au NAS par Tailscale, avec des alertes testées (voir [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md)). Le test de reconstruction et le README final arrivent à la dernière étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
 
 ## Contenu
 
