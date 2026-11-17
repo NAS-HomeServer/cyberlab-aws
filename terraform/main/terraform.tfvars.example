@@ -10,5 +10,5 @@ ssh_allowed_cidrs = ["203.0.113.10/32"]
 # Destinataire des alertes de budget.
 budget_email = "vous@example.com"
 
-# instance_type = "t3.small"   # passer a t3.medium si le noeud manque de memoire
+# instance_type = "t3.medium"   # defaut ; une t3.small manque de memoire (K3s + Argo CD + 12 pods)
 # monthly_budget_usd = 15

@@ -51,7 +51,7 @@ jobs:
           docker run --rm -v "$PWD":/w -w /w "$SHELLCHECK_IMAGE" -x \
             ci/render.sh ci/verify-signatures.sh ci/scan-images.sh scripts/instance.sh scripts/secrets.sh scripts/bootstrap-node.sh ci/check-secrets-encrypted.sh \
             k8s/kind/check-agent-config.sh k8s/kind/test.sh k8s/kind/test-resilience.sh k8s/kind/test-argocd.sh \
-            scripts/lib-digests.sh scripts/promote.sh ci/sync-digests.sh nas-monitoring/check-rules.sh
+            scripts/lib-digests.sh scripts/promote.sh ci/sync-digests.sh nas-monitoring/check-rules.sh scripts/verify-rebuild.sh
 
       # Le cluster ne recoit que ce que Kustomize rend : c'est cela qu'on valide.
       - name: Rendu des overlays (kustomize)
@@ -76,7 +76,7 @@ jobs:
 
       # Regles d'alerte evaluees par le Prometheus du NAS : syntaxe + tests unitaires (series synthetiques).
       - name: promtool (regles d'alerte du NAS)
-        run: nas-monitoring/check-rules.sh
+        run: nas-monitoring/check-rules.sh scripts/verify-rebuild.sh
 
   security:
     name: "② Security"
