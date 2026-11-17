@@ -51,3 +51,21 @@ variable "budget_email" {
   description = "Adresse qui recoit les alertes de budget."
   type        = string
 }
+
+variable "repo_url" {
+  description = "Depot Git public clone par l'instance au demarrage (modeles de Secrets, script secrets.sh)."
+  type        = string
+  default     = "https://github.com/NAS-HomeServer/cyberlab-aws.git"
+}
+
+variable "repo_ref" {
+  description = "Branche ou tag clone par l'instance. Mettre une branche pour tester avant fusion."
+  type        = string
+  default     = "main"
+}
+
+variable "age_key_parameter" {
+  description = "Nom du parametre SSM (SecureString) qui contient la cle privee age. Cree a la main, une fois, hors Terraform."
+  type        = string
+  default     = "/cyberlab-aws/age-key"
+}
