@@ -7,7 +7,7 @@ Deux modules indépendants :
 | `bootstrap/` | Bucket S3 de l'état Terraform (versionné, chiffré, jamais public, protégé par `prevent_destroy`) | Créé **une fois**, jamais détruit |
 | `main/` | VPC, sous-réseau public, groupe de sécurité, instance EC2 (Ubuntu 24.04), rôle IAM, IP élastique, budget | Détruit et recréé à volonté |
 
-Ressources créées par `main/` : un VPC (`10.20.0.0/16`), une passerelle Internet, un sous-réseau public (**pas de NAT Gateway**), un groupe de sécurité, une instance `t3.small` (disque gp3 20 Go chiffré), un rôle IAM limité à Systems Manager, une IP élastique et un budget mensuel avec alertes.
+Ressources créées par `main/` : un VPC (`10.20.0.0/16`), une passerelle Internet, un sous-réseau public (**pas de NAT Gateway**), un groupe de sécurité, une instance `t3.medium` (disque gp3 20 Go chiffré), un rôle IAM limité à Systems Manager, une IP élastique et un budget mensuel avec alertes.
 
 ## Prérequis
 
@@ -67,7 +67,7 @@ Même principe que la clé age : un paramètre SSM, créé à la main, lu par l'
 7. Tailscale (version et empreinte épinglées) : l'instance rejoint le tailnet avec le tag `tag:cyberlab-aws` ;
 8. création des `Application` Argo CD (`k8s/argocd/applications/`) : les backends, les tunnels et la supervision se déploient ensuite depuis Git (voir [docs/gitops.md](../docs/gitops.md)).
 
-**Mémoire** : K3s, Argo CD, les 6 pods applicatifs et la supervision ne tiennent pas confortablement dans les 2 Go d'une `t3.small` (il restait ~750 Mo avec Argo CD seul). Utiliser `instance_type = "t3.medium"` dans `terraform.tfvars`.
+**Mémoire** : K3s, Argo CD, les 12 pods applicatifs et la supervision ne tiennent pas dans les 2 Go d'une `t3.small` (il restait ~750 Mo avec Argo CD seul) : le défaut est donc `t3.medium` (4 Go).
 
 Chaque téléchargement est épinglé par version **et** par empreinte SHA-256. Pour tester une branche avant fusion : `repo_ref = "ma-branche"` dans `terraform.tfvars`.
 

@@ -5,9 +5,9 @@ variable "region" {
 }
 
 variable "instance_type" {
-  description = "Type d'instance EC2 (x86 : les images des backends ne sont publiees qu'en amd64)."
+  description = "Type d'instance EC2 (x86 : les images des backends ne sont publiees qu'en amd64). t3.medium : K3s, Argo CD et les 12 pods ne tiennent pas dans les 2 Go d'une t3.small."
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
   validation {
     condition     = can(regex("^t3\\.", var.instance_type))
     error_message = "Utiliser un type t3.* (x86) : les images backends sont en amd64 seulement."
