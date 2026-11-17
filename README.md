@@ -212,7 +212,7 @@ scripts/
 ├── bootstrap-node.sh                                    # cloud-init : K3s, Argo CD, secrets, Tailscale, Applications
 ├── verify-rebuild.sh                                    # contrôle complet après un apply
 ├── instance.sh                                          # arrêter / démarrer l'instance
-├── promote.sh, lib-digests.sh                           # promotion staging → production
+├── promote.sh                                           # promotion staging → production
 └── secrets.sh                                           # gestion des secrets chiffrés
 nas-monitoring/                                          # règles d'alerte pour le Prometheus du NAS + tests promtool
 ci/                                                      # scripts de la CI (rendu, signatures Cosign, scan, synchro des digests)
@@ -241,13 +241,6 @@ Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers
 | `ci/render.sh` | transforme chaque overlay Kustomize en un YAML complet, celui que le cluster recevra | la CI, avant kubeconform et Trivy |
 | `ci/verify-signatures.sh` | vérifie la signature Cosign de chaque image backend | la CI (contrôle Security) |
 | `ci/check-secrets-encrypted.sh` | refuse tout secret qui ne serait pas chiffré par SOPS | la CI (contrôle Security) |
-| `nas-monitoring/check-rules.sh` | valide la syntaxe des règles d'alerte du NAS et leurs tests unitaires | la CI (contrôle Code Quality) |
-
-### Bibliothèque (ne se lance pas seule)
-
-| Script | Rôle |
-|---|---|
-| `scripts/lib-digests.sh` | fonctions partagées pour lire et écrire les digests dans les `kustomization.yaml` ; utilisée par `promote.sh` |
 
 ### Tests locaux sur kind (aucun appel à AWS)
 
@@ -274,11 +267,11 @@ k8s/kind/test.sh --cleanup && k8s/kind/test-argocd.sh --cleanup   # supprime les
 
 | Étape | Contrôles |
 |---|---|
-| ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform (strict), promtool (agent et règles du NAS, avec tests unitaires), `terraform fmt` + `validate` |
+| ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform (strict), promtool (configuration de l'agent), `terraform fmt` + `validate` |
 | ② Security | Gitleaks, signatures Cosign des backends, Trivy config sur Kubernetes et Terraform (HIGH/CRITICAL bloquants) |
 | ③ Tests (kind) | déploiement complet sur un cluster jetable, déploiement par Argo CD (selfHeal) |
 
-Les mêmes scripts se lancent en local : `ci/render.sh <dossier>`, `ci/verify-signatures.sh`, `nas-monitoring/check-rules.sh`.
+Les mêmes scripts se lancent en local : `ci/render.sh <dossier>`, `ci/verify-signatures.sh`.
 
 ## Documentation
 
