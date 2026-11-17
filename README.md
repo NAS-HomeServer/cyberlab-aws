@@ -1,10 +1,29 @@
 # Cyberlab AWS
 
-Migration du cyberlab (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrator` et leurs 3 tunnels `cloudflared`, par environnement) d'un NAS Synology vers AWS : **Terraform** crée une instance EC2, **cloud-init** y installe K3s et Argo CD, puis **Argo CD** déploie tout depuis ce dépôt (GitOps). Deux environnements (`staging`, `production`) avec promotion par pull request et rollback par `git revert`. La supervision reste sur le NAS : un **Prometheus Agent** envoie ses métriques au Prometheus du NAS par Tailscale.
+Migration du **cyberlab** d'un NAS Synology vers **AWS**.
+
+**Ce qui est migré** : 3 backends et leurs 3 tunnels, dans chacun des 2 environnements (`staging` et `production`).
+
+| Backends | Tunnels |
+|---|---|
+| `sherlock` | un tunnel `cloudflared` par backend |
+| `dns-analyzer` | |
+| `audit-orchestrator` | |
+
+**Comment ça marche**
+
+- **Terraform** crée l'instance EC2.
+- **cloud-init** y installe K3s et Argo CD, une seule fois, au premier démarrage.
+- **Argo CD** déploie tout depuis ce dépôt (GitOps).
+- La **promotion** de staging vers production se fait par pull request, le **rollback** par `git revert`.
+- Un **Prometheus Agent** envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
 
 > **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle, vérifié par un script. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
 
-Le NAS reste la production tant que la bascule n'est pas décidée : son dépôt, [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra), n'est pas modifié. La supervision (Prometheus, Grafana, Alertmanager) reste dans [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring).
+**Les deux autres dépôts**
+
+- [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra) : le NAS reste la production tant que la bascule n'est pas décidée. Ce dépôt n'est pas modifié.
+- [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring) : Prometheus, Grafana et Alertmanager du NAS.
 
 ## Ce qui a été réalisé, en bref
 
