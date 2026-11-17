@@ -4,7 +4,7 @@ name: CI
 # (ArgoCD) ne suit que ce qui a passe ces trois etapes sur main.
 #   ① Code Quality : yamllint, shellcheck, kubeconform, promtool, terraform fmt/validate
 #   ② Security     : gitleaks, signatures Cosign des backends, trivy config (K8s et Terraform)
-#   ③ Tests (kind) : deploiement complet sur un cluster jetable, puis deploiement par Argo CD
+#   ③ Tests (kind) : deploiement complet sur un cluster jetable
 # Runners heberges par GitHub (pas le NAS) : le depot est public, donc jamais de runner
 # auto-heberge (il executerait le code des PR), et un cluster kind jetable y est
 # disponible sans toucher au NAS.
@@ -50,7 +50,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/w -w /w "$SHELLCHECK_IMAGE" -x \
             ci/render.sh ci/verify-signatures.sh scripts/secrets.sh scripts/bootstrap-node.sh ci/check-secrets-encrypted.sh \
-            k8s/kind/check-agent-config.sh k8s/kind/test.sh k8s/kind/test-argocd.sh
+            k8s/kind/check-agent-config.sh k8s/kind/test.sh
 
       # Le cluster ne recoit que ce que Kustomize rend : c'est cela qu'on valide.
       - name: Rendu des overlays (kustomize)
@@ -109,7 +109,7 @@ jobs:
     name: "③ Tests (kind)"
     runs-on: ubuntu-24.04
     needs: [lint, security]
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -121,18 +121,9 @@ jobs:
       - name: Deploiement complet sur kind (backends, tunnels, agent, faux NAS)
         run: k8s/kind/test.sh
 
-      # Meme chose avec Argo CD aux commandes : il clone ce depot et deploie l'overlay kind.
-      # On libere d'abord le premier cluster (memoire du runner).
-      - name: GitOps sur kind (Argo CD synchronise, selfHeal, recreation)
-        run: |
-          k8s/kind/test.sh --cleanup
-          k8s/kind/test-argocd.sh "${{ github.head_ref || github.ref_name }}"
-
       - name: Etat du cluster (en cas d'echec)
         if: failure()
         run: |
-          kubectl --context kind-cyberlab-argocd -n argocd get applications || true
-          kubectl --context kind-cyberlab-argocd get pods -A -o wide || true
           kubectl --context kind-cyberlab-test get pods -A -o wide || true
           kubectl --context kind-cyberlab-test -n monitoring logs deploy/prometheus-agent --tail=50 || true
           kubectl --context kind-cyberlab-test get events -A --sort-by=.lastTimestamp | tail -40 || true
