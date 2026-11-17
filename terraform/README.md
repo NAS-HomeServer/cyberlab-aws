@@ -39,6 +39,40 @@ terraform output
 
 `backend.hcl` et `terraform.tfvars` sont ignorés par git. Aucun secret n'est versionné.
 
+## 2 bis. Donner la clé age à l'instance (une seule fois, hors Terraform)
+
+Au premier démarrage, l'instance a besoin de la clé privée age pour déchiffrer les secrets. Elle la lit dans AWS Systems Manager Parameter Store ; elle n'est jamais dans le dépôt, ni dans `user_data`, ni dans l'état Terraform.
+
+```bash
+aws --region eu-west-3 ssm put-parameter --name /cyberlab-aws/age-key --type SecureString \
+  --value "$(cat ~/.config/sops/age/keys.txt)"
+```
+
+Ce paramètre n'est pas détruit par `terraform destroy` (il n'est pas géré par Terraform) : à ne faire qu'une fois. Coût : nul (paramètre standard).
+
+## 2 ter. Ce que fait l'instance au premier démarrage
+
+`scripts/bootstrap-node.sh` (cloud-init, environ 5 à 8 minutes), journal dans `/var/log/cyberlab-bootstrap.log` :
+
+1. paquets de base, AWS CLI ;
+2. SOPS ;
+3. K3s (sans traefik ni servicelb) ;
+4. Argo CD ;
+5. clonage de ce dépôt (`repo_ref`, `main` par défaut) ;
+6. lecture de la clé age dans SSM, `secrets.sh check` puis `apply` pour staging et production, puis suppression de la clé du disque.
+
+Chaque téléchargement est épinglé par version **et** par empreinte SHA-256. Pour tester une branche avant fusion : `repo_ref = "ma-branche"` dans `terraform.tfvars`.
+
+Vérifier après un `apply` :
+
+```bash
+ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform output -raw public_ip)
+sudo cloud-init status --wait        # attendre "status: done"
+sudo tail -5 /var/log/cyberlab-bootstrap.log   # "Bootstrap termine."
+sudo kubectl get pods -A             # argocd-* Running
+sudo kubectl -n cyberlab-staging get secrets   # 5 secrets
+```
+
 ## 3. Au quotidien : arrêter, ne pas détruire
 
 ```bash

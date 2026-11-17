@@ -16,6 +16,21 @@ resource "aws_instance" "node" {
   iam_instance_profile   = aws_iam_instance_profile.node.name
   key_name               = aws_key_pair.admin.key_name
 
+  # Bootstrap au premier demarrage (cloud-init) : K3s, Argo CD, secrets. Le script vit dans
+  # scripts/bootstrap-node.sh (verifiable par shellcheck) ; Terraform ne fait que le
+  # precedre de ses parametres. Aucun secret ici : seule la clef age est lue dans SSM, par l'instance.
+  user_data = <<-EOT
+    #!/usr/bin/env bash
+    export REPO_URL='${var.repo_url}'
+    export REPO_REF='${var.repo_ref}'
+    export AWS_REGION='${var.region}'
+    export AGE_PARAM='${var.age_key_parameter}'
+    ${file("${path.module}/../../scripts/bootstrap-node.sh")}
+  EOT
+  # Changer le script ou ses parametres recree l'instance : l'etat voulu est toujours
+  # celui que decrit le depot, jamais une instance modifiee a la main.
+  user_data_replace_on_change = true
+
   # IMDSv2 obligatoire, et hop limit 1 : un pod (un saut reseau de plus que l'hote)
   # ne peut pas lire les metadonnees de l'instance. audit-orchestrator et sherlock
   # font des requetes vers des cibles choisies par l'utilisateur : c'est la parade
