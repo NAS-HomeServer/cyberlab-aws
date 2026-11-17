@@ -86,6 +86,31 @@ Résultat mesuré le 17/11/2026 : une instance neuve est entièrement installée
 
 Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit le changement → il l'applique au cluster. Personne ne lance `kubectl apply`. Détails : [docs/gitops.md](docs/gitops.md).
 
+### La chaîne complète : de `terraform apply` aux applications
+
+```
+terraform apply
+   └─ crée l'EC2 (t3.medium) + réseau + IAM + budget, avec un user_data
+        └─ cloud-init exécute scripts/bootstrap-node.sh (≈ 3 min)
+             1. paquets de base, AWS CLI, SOPS
+             2. K3s (sans traefik ni servicelb)
+             3. Argo CD (install.yaml épinglé par version + SHA-256)
+             4. clone du dépôt
+             5. clé age lue dans SSM → déchiffrement des secrets → apply dans le cluster → clé supprimée du disque
+             6. Tailscale (rejoint le tailnet pour joindre le NAS)
+             7. création des 3 Applications Argo CD
+                  └─ Argo CD déploie ensuite depuis Git :
+                     cyberlab-staging, cyberlab-production, monitoring
+```
+
+| Élément | Installé par | Quand |
+|---|---|---|
+| EC2, réseau, IAM, budget, bucket d'état | **Terraform** (`terraform/main` et `terraform/bootstrap`) | `terraform apply`, à la main |
+| K3s, Argo CD, secrets, Tailscale | **`scripts/bootstrap-node.sh`** (cloud-init) | une seule fois, au premier démarrage |
+| Backends, tunnels, supervision (les 12 pods) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` |
+
+Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_release`) : il fournit le script via `user_data`, et c'est l'instance qui s'installe elle-même. La CI ne lance ni `plan` ni `apply` : elle valide (`fmt`, `validate`, Trivy) et teste les manifestes sur un cluster jetable. Le « CD » est assuré par Argo CD en mode GitOps, c'est lui qui tire depuis Git.
+
 ### Choix structurants (justifications dans [docs/notes-projet.md](docs/notes-projet.md))
 
 | Choix | Pourquoi |
@@ -97,6 +122,26 @@ Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit l
 | Images référencées par digest | une image ne peut pas changer sous nos pieds ; la CI vérifie leur signature Cosign |
 | Prometheus Agent → NAS par Tailscale | supervision centralisée sur l'existant, aucun port ouvert, accès limité par ACL |
 | Bucket d'état Terraform à part | il survit aux `destroy` ; l'infrastructure se détruit et se recrée librement |
+
+## Où sont les secrets (clé AWS, kubeconfig, CI)
+
+Le dépôt est **public** : la règle est qu'aucun secret n'y entre, ni en clair, ni dans la CI. Voici où se trouve chacun.
+
+| Secret | Où il vit | Ce qui le protège |
+|---|---|---|
+| **Clé AWS** (pour `terraform apply`) | uniquement sur ton poste (AWS CLI configuré) | **absente de GitHub** : la CI ne parle jamais à AWS (`init -backend=false`, aucun `plan` ni `apply`). `*.tfvars` et `*.tfstate` sont dans `.gitignore` |
+| **kubeconfig** | uniquement sur l'instance (`/etc/rancher/k3s/`) | **absent de GitHub** : la CI ne déploie rien sur le vrai cluster, c'est Argo CD (dans le cluster) qui tire depuis Git. Le port 6443 n'est pas ouvert (voir `security.tf`) |
+| **Secrets applicatifs** (jetons des tunnels, etc.) | dans Git, **chiffrés par SOPS + age** (`secrets/*/*.sops.yaml`) | la CI refuse tout fichier non chiffré (`ci/check-secrets-encrypted.sh`) et passe Gitleaks. Seule la clé **publique** age est versionnée (`.sops.yaml`) |
+| **Clé privée age** | AWS Systems Manager Parameter Store (SecureString) | lue par l'instance au premier démarrage, puis **supprimée du disque** (`shred`). Jamais dans le dépôt, ni dans `user_data`, ni dans l'état Terraform |
+| **Clé d'authentification Tailscale** | Parameter Store (SecureString), créée à la main | même chemin que la clé age ; sans elle, l'instance démarre sans lien vers le NAS |
+| **Identifiants Argo CD → Git** | aucun | le dépôt est public, Argo CD le clone sans identifiant |
+| **Accès au registre d'images** | aucun | les images ghcr.io sont publiques ; leur signature Cosign est vérifiée **sans clé** (identité du workflow GitHub) |
+
+**Comment l'instance accède à ses deux paramètres sans clé stockée** : elle a un rôle IAM (`terraform/main/iam.tf`) qui n'autorise que `ssm:GetParameter` sur ces deux paramètres, et rien d'autre (ni S3, ni EC2, ni IAM). Les identifiants temporaires du rôle sont fournis par le service de métadonnées, durci en IMDSv2 avec `hop limit = 1` : un pod compromis ne peut pas les atteindre.
+
+**Côté CI** : `ci.yml` n'utilise aucun secret du dépôt et ne demande que `permissions: contents: read`. Le workflow `sync-digests.yml` utilise uniquement le `GITHUB_TOKEN` fourni automatiquement, pour ouvrir une pull request. Les runners sont hébergés par GitHub, jamais auto-hébergés : une PR venue d'un fork n'exécute donc rien sur ta machine et n'a rien à voler.
+
+**Le jour où un `terraform plan` sera ajouté à la CI** : il faudra une authentification **OIDC** GitHub → AWS avec un rôle en lecture seule, sans clé stockée, et le garder inaccessible aux PR de forks.
 
 ## D'où viennent les images
 
