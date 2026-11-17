@@ -494,12 +494,22 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
 - **`t3.medium` par défaut** : la procédure d'installation du README ne doit pas mener à une
   instance trop petite ; la `t3.small` ne tenait pas en mémoire (voir étape 5).
 
-### À confirmer au premier essai réel
+### Résultat du premier essai réel (17/11/2026)
 
-- Durée totale de reconstruction (à noter ici avec la date) et fonctionnement du script de
-  vérification sur une instance neuve : il n'a pas encore tourné contre AWS.
-- Bootstrap sans intervention après les deux correctifs Tailscale (PR #13 et #15) : le dernier
-  essai complet avait nécessité de créer les Applications à la main.
+Instance neuve créée par un seul `terraform apply` (aucune intervention ensuite) :
+
+- instance lancée à 14:14:11 UTC, bootstrap terminé à 14:16:56 UTC : **2 min 45 s**
+  (étapes : paquets 35 s, Argo CD 1 min 04 s, secrets 11 s, Tailscale 3 s) ;
+- `scripts/verify-rebuild.sh` : **11 contrôles sur 11 OK** (3 applications Argo CD
+  `Synced/Healthy`, 6 deployments par namespace, secrets présents, clé age supprimée,
+  Tailscale connecté, 6 jobs `aws-*` reçus par le Prometheus du NAS).
+- Les deux correctifs du bootstrap (PR #13 : clé Tailscale par fichier, PR #15 : SIGPIPE) sont
+  validés : c'est le premier démarrage complet sans rattrapage manuel.
+
+### Reste à confirmer
+
+- Promotion staging → production et `git revert` rejoués sur AWS (démonstration).
+- Workflow `Sync digests` : premier déclenchement réel (réglage de dépôt requis).
 
 ## Réplicas : un seul partout, deux pour `dns-analyzer` en production
 
