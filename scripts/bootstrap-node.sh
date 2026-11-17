@@ -128,7 +128,9 @@ if ts_key="$(aws --region "$AWS_REGION" ssm get-parameter --name "$TS_PARAM" --w
   printf '%s' "$ts_key" > "$ts_keyfile"
   unset ts_key
   if timeout 120 tailscale up --auth-key="file:$ts_keyfile" --hostname=cyberlab-aws --accept-dns=false --advertise-tags=tag:cyberlab-aws; then
-    tailscale status | head -5
+    # Sans pipe vers head : avec pipefail, la fermeture anticipee du pipe (SIGPIPE) ferait echouer tout le script.
+    tailscale status > "$WORK/ts-status" || true
+    head -5 "$WORK/ts-status"
   else
     log "ATTENTION : Tailscale n'a pas pu rejoindre le reseau (cle refusee, expiree ou ACL) ; la supervision ne remontera pas au NAS."
   fi
