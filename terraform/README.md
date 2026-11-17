@@ -56,7 +56,7 @@ Même principe que la clé age : un paramètre SSM, créé à la main, lu par l'
 
 ## 2 ter. Ce que fait l'instance au premier démarrage
 
-`scripts/bootstrap-node.sh` (cloud-init, environ 5 à 8 minutes), journal dans `/var/log/cyberlab-bootstrap.log` :
+`scripts/bootstrap-node.sh` (cloud-init, environ 3 minutes mesurées), journal dans `/var/log/cyberlab-bootstrap.log` :
 
 1. paquets de base, AWS CLI ;
 2. SOPS ;

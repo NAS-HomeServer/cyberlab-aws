@@ -38,7 +38,7 @@ cd ../..
 scripts/verify-rebuild.sh
 ```
 
-Mesurer le temps entre `terraform apply` et « TOUT EST OK » : c'est la durée de reconstruction à annoncer au jury. Attendu : de 10 à 15 minutes (création AWS ~1 min, bootstrap cloud-init 5 à 8 min, puis démarrage des pods et premières métriques).
+Mesurer le temps entre `terraform apply` et « TOUT EST OK » : c'est la durée de reconstruction à annoncer au jury. Attendu : une dizaine de minutes au plus (création AWS ~1 min, bootstrap cloud-init environ 3 min, puis démarrage des pods et premières métriques).
 
 Pendant l'attente, on peut suivre le bootstrap sans y toucher :
 
