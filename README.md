@@ -131,7 +131,7 @@ Le dépôt est **public** : la règle est qu'aucun secret n'y entre, ni en clair
 |---|---|---|
 | **Clé AWS** (pour `terraform apply`) | uniquement sur ton poste (AWS CLI configuré) | **absente de GitHub** : la CI ne parle jamais à AWS (`init -backend=false`, aucun `plan` ni `apply`). `*.tfvars` et `*.tfstate` sont dans `.gitignore` |
 | **kubeconfig** | uniquement sur l'instance (`/etc/rancher/k3s/`) | **absent de GitHub** : la CI ne déploie rien sur le vrai cluster, c'est Argo CD (dans le cluster) qui tire depuis Git. Le port 6443 n'est pas ouvert (voir `security.tf`) |
-| **Secrets applicatifs** (jetons des tunnels, etc.) | dans Git, **chiffrés par SOPS + age** (`secrets/*/*.sops.yaml`) | la CI refuse tout fichier non chiffré (`ci/check-secrets-encrypted.sh`) et passe Gitleaks. Seule la clé **publique** age est versionnée (`.sops.yaml`) |
+| **Secrets applicatifs** (tokens des 3 tunnels cloudflared, `.env` des backends) | dans Git, **chiffrés par SOPS + age** (`secrets/*/*.sops.yaml`) | la CI refuse tout fichier non chiffré (`ci/check-secrets-encrypted.sh`) et passe Gitleaks. Seule la clé **publique** age est versionnée (`.sops.yaml`) |
 | **Clé privée age** | AWS Systems Manager Parameter Store (SecureString) | lue par l'instance au premier démarrage, puis **supprimée du disque** (`shred`). Jamais dans le dépôt, ni dans `user_data`, ni dans l'état Terraform |
 | **Clé d'authentification Tailscale** | Parameter Store (SecureString), créée à la main | même chemin que la clé age ; sans elle, l'instance démarre sans lien vers le NAS |
 | **Identifiants Argo CD → Git** | aucun | le dépôt est public, Argo CD le clone sans identifiant |
