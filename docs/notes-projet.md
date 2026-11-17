@@ -460,3 +460,8 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
   de l'alerte sur Discord demandent le NAS et AWS ; ils se vérifient au premier test réel.
   Les commandes de suspension/rétablissement de la synchronisation Argo CD aussi.
 - **Clé Tailscale limitée à 90 jours** : à renouveler avant une reconstruction après ce délai.
+- **Bug trouvé au premier test réel** : `tailscale up` ignore la variable `TS_AUTHKEY` (je l'avais
+  supposé sans le vérifier). Sans clé, il affiche une URL de connexion interactive et attend
+  indéfiniment : le bootstrap restait bloqué à l'étape 7. Corrigé : la clé est passée par
+  `--auth-key=file:...`, avec un délai de 120 s et un avertissement, pour qu'un échec Tailscale
+  ne bloque plus jamais K3s, Argo CD ni les applications.
