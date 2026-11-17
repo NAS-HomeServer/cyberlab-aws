@@ -1,0 +1,64 @@
+name: Sync digests
+
+# Quand un backend est reconstruit, sa CI met a jour le docker-compose de cyberlab-infra (NAS).
+# Ce workflow lit ces digests (lecture seule) et ouvre une PR qui aligne STAGING dessus.
+# La production n'est jamais touchee ici : elle recoit les digests par promotion
+# (scripts/promote.sh), apres validation en staging.
+#
+# Prerequis (reglage du depot, une fois) : Settings > Actions > General > Workflow permissions
+# > "Allow GitHub Actions to create and approve pull requests".
+#
+# Une PR ouverte avec GITHUB_TOKEN ne declenche pas les workflows : on lance donc la CI
+# a la main sur la branche (workflow_dispatch), ce qui fournit les checks obligatoires.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: sync-digests
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Aligner staging sur cyberlab-infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: sync/digests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Lire les digests de cyberlab-infra
+        id: sync
+        run: |
+          ci/sync-digests.sh | tee "$RUNNER_TEMP/changes.txt"
+          if git diff --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Ouvrir ou mettre a jour la PR
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git commit -am "chore(digests): aligne staging sur cyberlab-infra"
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number -q '.[].number')" ]; then
+            {
+              echo "Les images suivantes ont change dans cyberlab-infra (production NAS) :"
+              echo
+              echo '```'
+              cat "$RUNNER_TEMP/changes.txt"
+              echo '```'
+              echo
+              echo "Fusionner deploie ces digests en **staging**. La production les recevra par promotion (scripts/promote.sh)."
+            } > "$RUNNER_TEMP/body.md"
+            gh pr create --base main --head "$BRANCH" --title "chore(digests): aligne staging sur cyberlab-infra" --body-file "$RUNNER_TEMP/body.md"
+          fi
+          gh workflow run ci.yml --ref "$BRANCH"

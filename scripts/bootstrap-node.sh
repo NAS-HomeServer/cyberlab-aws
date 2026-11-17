@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Bootstrap du noeud : lance UNE FOIS, au premier demarrage, par cloud-init (user_data Terraform).
-# Resultat : K3s + Argo CD installes, secrets chiffres dechiffres et appliques dans le cluster.
+# Resultat : K3s + Argo CD installes, secrets chiffres dechiffres et appliques dans le cluster,
+# Applications Argo CD creees : backends, tunnels et supervision se deploient depuis Git.
 # Aucune intervention manuelle. Journal : /var/log/cyberlab-bootstrap.log
 #
 # Variables attendues (ecrites en tete du user_data par Terraform) :
@@ -53,18 +54,18 @@ fetch() {
   echo "$3  $2" | sha256sum -c -
 }
 
-log "1/6 Paquets de base"
+log "1/7 Paquets de base"
 retry apt-get update -qq
 retry apt-get install -y -qq git curl ca-certificates
 
-log "2/6 AWS CLI (lecture de la cle age dans SSM)"
+log "2/7 AWS CLI (lecture de la cle age dans SSM)"
 command -v aws > /dev/null || retry snap install aws-cli --classic
 
-log "3/6 SOPS $SOPS_VERSION"
+log "3/7 SOPS $SOPS_VERSION"
 fetch "https://github.com/getsops/sops/releases/download/$SOPS_VERSION/sops-$SOPS_VERSION.linux.amd64" "$WORK/sops" "$SOPS_SHA256"
 install -m 0755 "$WORK/sops" /usr/local/bin/sops
 
-log "4/6 K3s $K3S_VERSION"
+log "4/7 K3s $K3S_VERSION"
 # Sans traefik (pas d'ingress : le trafic arrive par les tunnels cloudflared), sans servicelb
 # ni metrics-server : memoire economisee sur une petite instance.
 fetch "https://raw.githubusercontent.com/k3s-io/k3s/${K3S_VERSION/+/%2B}/install.sh" "$WORK/k3s-install.sh" "$K3S_INSTALL_SHA256"
@@ -75,7 +76,7 @@ for _ in $(seq 1 60); do
 done
 kubectl wait --for=condition=Ready node --all --timeout=10s
 
-log "5/6 Argo CD $ARGOCD_VERSION"
+log "5/7 Argo CD $ARGOCD_VERSION"
 fetch "https://raw.githubusercontent.com/argoproj/argo-cd/$ARGOCD_VERSION/manifests/install.yaml" "$WORK/argocd.yaml" "$ARGOCD_SHA256"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 # server-side : les CRD d'Argo CD depassent la taille acceptee par un apply classique.
@@ -86,7 +87,7 @@ kubectl -n argocd rollout status deployment/argocd-server --timeout=300s
 kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=300s
 kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
 
-log "6/6 Secrets (cle age lue dans SSM, jamais ecrite dans le depot)"
+log "6/7 Secrets (cle age lue dans SSM, jamais ecrite dans le depot)"
 rm -rf /opt/cyberlab-aws
 retry git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" /opt/cyberlab-aws
 export SOPS_AGE_KEY_FILE=/root/.config/sops/age/keys.txt
@@ -100,6 +101,19 @@ for env in staging production; do
 done
 # Les Secrets vivent desormais dans le cluster : la cle privee n'a plus de raison de rester sur le disque.
 shred -u "$SOPS_AGE_KEY_FILE"
+
+log "7/7 Applications Argo CD (le deploiement est ensuite pilote par Git)"
+# repoURL et targetRevision des Applications sont reecrits avec les variables Terraform,
+# pour pouvoir tester une branche avant fusion (repo_ref).
+for app in /opt/cyberlab-aws/k8s/argocd/applications/*.yaml; do
+  sed -E "s|^( *repoURL:).*|\\1 $REPO_URL|; s|^( *targetRevision:).*|\\1 $REPO_REF|" "$app" | kubectl apply -f -
+done
+# Attente indicative (10 min max) : un echec ici (image, reseau) ne doit pas faire echouer le
+# bootstrap, K3s et Argo CD sont installes ; l'etat se lit dans `kubectl -n argocd get applications`.
+for app in cyberlab-staging cyberlab-production monitoring; do
+  kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy "application/$app" --timeout=600s \
+    || log "ATTENTION : $app n'est pas Healthy (voir : kubectl -n argocd get applications)"
+done
 
 touch "$DONE"
 log "Bootstrap termine."

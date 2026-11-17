@@ -1,0 +1,32 @@
+# Backends et tunnels de PRODUCTION. Les digests viennent de staging par promotion (scripts/promote.sh), jamais directement.
+# Argo CD surveille le dossier `path` de ce depot : tout changement fusionne sur la
+# branche suivie est applique au cluster (sync automatique). Un git revert le defait.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cyberlab-production
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # repoURL et targetRevision sont reecrits au bootstrap (variables Terraform repo_url / repo_ref).
+    repoURL: https://github.com/NAS-HomeServer/cyberlab-aws.git
+    targetRevision: main
+    path: k8s/cyberlab/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cyberlab-production
+  syncPolicy:
+    automated:
+      # prune : une ressource retiree de Git est supprimee du cluster.
+      # selfHeal : une modification faite a la main dans le cluster est annulee.
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
