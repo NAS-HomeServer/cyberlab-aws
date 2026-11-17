@@ -79,6 +79,21 @@ Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit l
 | Prometheus Agent → NAS par Tailscale | supervision centralisée sur l'existant, aucun port ouvert, accès limité par ACL |
 | Bucket d'état Terraform à part | il survit aux `destroy` ; l'infrastructure se détruit et se recrée librement |
 
+## D'où viennent les images
+
+Les 3 backends sont construits et publiés dans le registre GitHub (**ghcr.io**), sous le compte `ag69075`. Le cluster les télécharge sans identifiant : ces paquets sont publics.
+
+| Service | Image | Dépôt qui la construit |
+|---|---|---|
+| sherlock | `ghcr.io/ag69075/cyberlab_sherlock_backend` | `ag69075/cyberlab_sherlock_backend` |
+| dns-analyzer | `ghcr.io/ag69075/cyberlab_dns-analyzer` | `ag69075/cyberlab_dns-analyzer` |
+| audit-orchestrator | `ghcr.io/ag69075/cyberlab_audit_orchestrator` | `ag69075/cyberlab_audit_orchestrator` |
+| tunnels | `cloudflare/cloudflared` (image officielle, Docker Hub) | Cloudflare |
+
+- **Une image est toujours désignée par son digest** (`@sha256:…`) et non par une étiquette comme `latest` : l'image déployée est exactement celle qui a été validée. Les digests sont écrits dans `k8s/cyberlab/overlays/{staging,production}/kustomization.yaml`.
+- **Chaque dépôt de backend signe son image** (Cosign, sans clé, via son workflow GitHub). La CI de ce dépôt vérifie la signature (`ci/verify-signatures.sh`) : une image non signée par le bon dépôt bloque la fusion.
+- **Pour déployer une nouvelle version** : le dépôt du backend publie l'image, son digest arrive dans staging (workflow `Sync digests`), puis on le promeut en production (`scripts/promote.sh`). Voir [docs/gitops.md](docs/gitops.md).
+
 ## Installation complète
 
 Prérequis sur le poste : Terraform ≥ 1.10, AWS CLI configuré, [age](https://github.com/FiloSottile/age) et [SOPS](https://github.com/getsops/sops), `kubectl` (pour le test local), Docker + [kind](https://kind.sigs.k8s.io/) (pour le test local). Côté services : un compte AWS, un domaine Cloudflare avec 6 tunnels créés (un par backend et par environnement), un compte Tailscale, et le Prometheus du NAS.
