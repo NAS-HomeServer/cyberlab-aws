@@ -238,8 +238,7 @@ un jeton vers ce dépôt), ou un workflow ici qui lit les digests du compose de
 - **IMDSv2 obligatoire avec hop limit 1** : un pod (un saut réseau de plus) ne peut pas lire
   les métadonnées de l'instance. Les backends effectuent des requêtes vers des cibles
   choisies par l'utilisateur (risque SSRF) ; c'est la parade côté infrastructure.
-- **IP élastique dans le module principal** : stable aux arrêts/démarrages (ce que fait
-  `scripts/instance.sh`), libérée par un `destroy`. Avec Tailscale, le lien avec le NAS ne
+- **IP élastique dans le module principal** : stable aux arrêts/démarrages, libérée par un `destroy`. Avec Tailscale, le lien avec le NAS ne
   dépend pas de l'IP publique. *Alternative écartée* : l'allouer dans le bootstrap pour
   qu'elle survive aux `destroy` (coût permanent, utile seulement si le NAS filtrait par IP).
 - **Budget** : alerte à 80 % du réel et 100 % du prévu, 15 $/mois par défaut ; l'adresse
@@ -387,8 +386,9 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
 - Trois `Application` Argo CD (`k8s/argocd/applications/`) : staging, production, supervision.
   Sync automatique avec `prune` et `selfHeal`. Créées par le bootstrap (étape 7 du script), avec
   l'URL et la branche de Terraform (`repo_url`, `repo_ref`) réécrites par `sed`.
-- Promotion : `scripts/promote.sh` copie les digests de staging vers production ; la
-  production ne reçoit jamais directement une image.
+- Promotion : les digests de staging sont recopiés vers production par une PR (un script
+  `promote.sh` avait été écrit, retiré depuis pour simplifier) ; la production ne reçoit
+  jamais directement une image.
 - Synchronisation des digests : un workflow automatique avait été écrit, puis retiré pour
   simplifier ; le digest de staging se met à jour par une PR manuelle.
 - Rollback : `git revert` de la fusion fautive ; Argo CD réapplique l'ancien digest.
@@ -446,7 +446,7 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
 - **Bootstrap tolérant** : sans paramètre SSM, l'instance démarre quand même (avertissement dans
   le journal), seule la supervision ne remonte pas.
 - **Alertes bornées à `cluster="aws-k3s"`** et jobs `aws-*` : aucune interaction avec les règles
-  existantes du NAS. Pas d'alerte « métriques absentes » : l'instance est arrêtée chaque soir.
+  existantes du NAS. Pas d'alerte « métriques absentes » : l'instance n'est allumée que pour les démonstrations.
 - **Démo d'alerte et Argo CD** : le selfHeal rétablit un backend mis à 0 en quelques secondes ;
   pour la démo on suspend la synchronisation automatique de l'application, puis on la rétablit.
 
