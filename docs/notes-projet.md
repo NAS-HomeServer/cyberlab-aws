@@ -480,7 +480,7 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
 
 - `docs/test-reconstruction.md` : procédure `terraform destroy` puis `apply` (ce qui est détruit,
   ce qui est conservé, durée à mesurer, dépannage).
-- `scripts/verify-rebuild.sh` : vérifie depuis le poste, par SSH, le bootstrap, K3s, les 3
+- `scripts/verify-rebuild.sh` (script retiré depuis, pour simplifier) : vérifiait depuis le poste, par SSH, le bootstrap, K3s, les 3
   applications Argo CD, les 6 deployments par namespace, l'absence de la clé age sur le disque,
   Tailscale et, surtout, interroge le Prometheus **du NAS depuis l'instance** pour confirmer que
   les 6 jobs `aws-*` arrivent bien. Chaque contrôle réessaie jusqu'à un délai : on le lance dès
@@ -500,7 +500,7 @@ Instance neuve créée par un seul `terraform apply` (aucune intervention ensuit
 
 - instance lancée à 14:14:11 UTC, bootstrap terminé à 14:16:56 UTC : **2 min 45 s**
   (étapes : paquets 35 s, Argo CD 1 min 04 s, secrets 11 s, Tailscale 3 s) ;
-- `scripts/verify-rebuild.sh` : **11 contrôles sur 11 OK** (3 applications Argo CD
+- `scripts/verify-rebuild.sh` (retiré depuis) : **11 contrôles sur 11 OK** (3 applications Argo CD
   `Synced/Healthy`, 6 deployments par namespace, secrets présents, clé age supprimée,
   Tailscale connecté, 6 jobs `aws-*` reçus par le Prometheus du NAS).
 - Les deux correctifs du bootstrap (PR #13 : clé Tailscale par fichier, PR #15 : SIGPIPE) sont
@@ -522,4 +522,4 @@ Instance neuve créée par un seul `terraform apply` (aucune intervention ensuit
 - **Ce que cela montre** : le nombre de réplicas se règle par environnement dans l'overlay, par
   une PR, appliqué par Argo CD. Limite connue : les deux réplicas partagent le même noeud.
 - À vérifier sur AWS : 2 pods `dns-analyzer` en production, mémoire de l'instance (`free -m`),
-  `verify-rebuild.sh` toujours OK.
+  contrôle de la reconstruction toujours OK.
