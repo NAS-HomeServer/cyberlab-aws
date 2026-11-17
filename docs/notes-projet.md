@@ -472,3 +472,30 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
   (SIGPIPE) avait été écarté à tort par une reproduction locale trop simple : une petite sortie
   tient d'un coup dans le tampon du pipe. Leçon : un script de bootstrap ne se valide que par un
   vrai démarrage, et une hypothèse se prouve sur la machine concernée.
+
+## Étape 8 — Test de reconstruction et README final
+
+### Ce qui a été fait
+
+- `docs/test-reconstruction.md` : procédure `terraform destroy` puis `apply` (ce qui est détruit,
+  ce qui est conservé, durée à mesurer, dépannage).
+- `scripts/verify-rebuild.sh` : vérifie depuis le poste, par SSH, le bootstrap, K3s, les 3
+  applications Argo CD, les 6 deployments par namespace, l'absence de la clé age sur le disque,
+  Tailscale et, surtout, interroge le Prometheus **du NAS depuis l'instance** pour confirmer que
+  les 6 jobs `aws-*` arrivent bien. Chaque contrôle réessaie jusqu'à un délai : on le lance dès
+  la fin de l'`apply`.
+- README final : architecture, procédure d'installation complète, exploitation, structure.
+
+### Choix et justifications
+
+- **Contrôle fait depuis l'instance** (et non depuis le poste) : seul l'instance a le droit de
+  joindre le NAS (ACL Tailscale) ; la requête prouve donc le lien de bout en bout.
+- **`t3.medium` par défaut** : la procédure d'installation du README ne doit pas mener à une
+  instance trop petite ; la `t3.small` ne tenait pas en mémoire (voir étape 5).
+
+### À confirmer au premier essai réel
+
+- Durée totale de reconstruction (à noter ici avec la date) et fonctionnement du script de
+  vérification sur une instance neuve : il n'a pas encore tourné contre AWS.
+- Bootstrap sans intervention après les deux correctifs Tailscale (PR #13 et #15) : le dernier
+  essai complet avait nécessité de créer les Applications à la main.
