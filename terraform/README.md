@@ -50,6 +50,10 @@ aws --region eu-west-3 ssm put-parameter --name /cyberlab-aws/age-key --type Sec
 
 Ce paramètre n'est pas détruit par `terraform destroy` (il n'est pas géré par Terraform) : à ne faire qu'une fois. Coût : nul (paramètre standard).
 
+## 2 quater. Clé Tailscale (lien privé vers le NAS, une seule fois)
+
+Même principe que la clé age : un paramètre SSM, créé à la main, lu par l'instance au premier démarrage. La création de la clé et les règles ACL sont décrites dans [docs/changements-nas-monitoring.md](../docs/changements-nas-monitoring.md) (§1). Sans ce paramètre l'instance démarre normalement, mais la supervision ne remonte pas au NAS (un avertissement apparaît dans le journal de bootstrap).
+
 ## 2 ter. Ce que fait l'instance au premier démarrage
 
 `scripts/bootstrap-node.sh` (cloud-init, environ 5 à 8 minutes), journal dans `/var/log/cyberlab-bootstrap.log` :
@@ -60,7 +64,8 @@ Ce paramètre n'est pas détruit par `terraform destroy` (il n'est pas géré pa
 4. Argo CD ;
 5. clonage de ce dépôt (`repo_ref`, `main` par défaut) ;
 6. lecture de la clé age dans SSM, `secrets.sh check` puis `apply` pour staging et production, puis suppression de la clé du disque ;
-7. création des `Application` Argo CD (`k8s/argocd/applications/`) : les backends, les tunnels et la supervision se déploient ensuite depuis Git (voir [docs/gitops.md](../docs/gitops.md)).
+7. Tailscale (version et empreinte épinglées) : l'instance rejoint le tailnet avec le tag `tag:cyberlab-aws` ;
+8. création des `Application` Argo CD (`k8s/argocd/applications/`) : les backends, les tunnels et la supervision se déploient ensuite depuis Git (voir [docs/gitops.md](../docs/gitops.md)).
 
 **Mémoire** : K3s, Argo CD, les 6 pods applicatifs et la supervision ne tiennent pas confortablement dans les 2 Go d'une `t3.small` (il restait ~750 Mo avec Argo CD seul). Utiliser `instance_type = "t3.medium"` dans `terraform.tfvars`.
 
