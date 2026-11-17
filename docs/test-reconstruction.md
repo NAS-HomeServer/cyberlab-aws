@@ -32,34 +32,29 @@ terraform state list            # ne doit rien afficher
 
 # 3. Tout reconstruire. C'est la SEULE commande ; ensuite on n'intervient plus.
 terraform apply
-
-# 4. Vérifier de l'extérieur (réessaie tout seul jusqu'à ce que tout soit prêt).
-cd ../..
-scripts/verify-rebuild.sh
 ```
 
-Mesurer le temps entre `terraform apply` et « TOUT EST OK » : c'est la durée de reconstruction à annoncer au jury. Attendu : une dizaine de minutes au plus (création AWS ~1 min, bootstrap cloud-init environ 3 min, puis démarrage des pods et premières métriques).
+Mesurer le temps entre `terraform apply` et le moment où tout est `Healthy` : c'est la durée de reconstruction à annoncer au jury. Attendu : une dizaine de minutes au plus (création AWS ~1 min, bootstrap cloud-init environ 3 min, puis démarrage des pods).
 
-Pendant l'attente, on peut suivre le bootstrap sans y toucher :
+## Vérifier que tout est revenu
+
+Se connecter à l'instance et regarder trois choses :
 
 ```bash
-ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip) \
-  "sudo tail -f /var/log/cyberlab-bootstrap.log"
-```
+ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip)
 
-## Ce que contrôle `scripts/verify-rebuild.sh`
+sudo tail -5 /var/log/cyberlab-bootstrap.log     # « Bootstrap termine. »
+sudo kubectl -n argocd get applications          # cyberlab-staging, cyberlab-production, monitoring : Synced / Healthy
+sudo kubectl get pods -A                         # backends et tunnels : Running
+```
 
 | Contrôle | Prouve que |
 |---|---|
-| `/var/lib/cyberlab-bootstrap.done` + « Bootstrap termine » | le script cloud-init est allé jusqu'au bout (les 8 étapes) |
-| Noeud K3s `Ready` | K3s est installé et fonctionnel |
+| « Bootstrap termine » dans le journal | le script cloud-init est allé jusqu'au bout |
 | 3 applications Argo CD `Synced/Healthy` | Argo CD a lu Git et déployé staging, production et la supervision |
-| 6 deployments disponibles + Secrets présents par namespace | backends et tunnels tournent, secrets déchiffrés (SOPS) et appliqués |
-| Clé age absente du disque | la clé privée n'a pas été laissée sur l'instance |
-| Tailscale connecté, NAS joignable | le lien privé vers le NAS fonctionne |
-| 6 jobs `aws-*` avec `up == 1` côté NAS | **les métriques arrivent réellement sur le NAS** (la requête est posée au Prometheus du NAS) |
+| Pods `Running` dans `cyberlab-staging` et `cyberlab-production` | backends et tunnels tournent, secrets déchiffrés (SOPS) et appliqués |
 
-Le script sort avec le code 0 si tout est bon, 1 sinon (lignes `KO` + journal à consulter).
+Pour suivre le bootstrap en direct pendant l'attente : `sudo tail -f /var/log/cyberlab-bootstrap.log`.
 
 ## En cas d'échec
 

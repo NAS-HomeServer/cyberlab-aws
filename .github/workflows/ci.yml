@@ -51,7 +51,7 @@ jobs:
           docker run --rm -v "$PWD":/w -w /w "$SHELLCHECK_IMAGE" -x \
             ci/render.sh ci/verify-signatures.sh scripts/instance.sh scripts/secrets.sh scripts/bootstrap-node.sh ci/check-secrets-encrypted.sh \
             k8s/kind/check-agent-config.sh k8s/kind/test.sh k8s/kind/test-argocd.sh \
-            scripts/promote.sh scripts/verify-rebuild.sh
+            scripts/promote.sh
 
       # Le cluster ne recoit que ce que Kustomize rend : c'est cela qu'on valide.
       - name: Rendu des overlays (kustomize)

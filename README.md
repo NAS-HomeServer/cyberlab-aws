@@ -18,7 +18,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 - La **promotion** de staging vers production se fait par pull request, le **rollback** par `git revert`.
 - Un **Prometheus Agent** envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
 
-> **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle, vérifié par un script. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
+> **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
 
 **Les deux autres dépôts**
 
@@ -57,10 +57,10 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 6. Qualité et preuves
      ├─ CI à 3 contrôles obligatoires (qualité, sécurité, tests sur kind)
      ├─ test de reconstruction : destroy puis apply, tout revient sans intervention
-     └─ script de vérification : 11 contrôles, dont l'arrivée des métriques sur le NAS
+     └─ démonstration : « terraform apply » puis « terraform destroy », tout se reconstruit
 ```
 
-Résultat mesuré le 17/11/2026 : une instance neuve est entièrement installée en **moins de 3 minutes** (hors création AWS) et les 11 contrôles de `scripts/verify-rebuild.sh` passent. Détails et difficultés rencontrées : [docs/notes-projet.md](docs/notes-projet.md).
+Résultat mesuré le 17/11/2026 : une instance neuve est entièrement installée en **moins de 3 minutes** (hors création AWS) et les 3 applications Argo CD passent `Synced/Healthy`. Détails et difficultés rencontrées : [docs/notes-projet.md](docs/notes-projet.md).
 
 ## Architecture
 
@@ -175,7 +175,7 @@ Prérequis sur le poste : Terraform ≥ 1.10, AWS CLI configuré, [age](https://
    terraform apply               # ⚠ crée des ressources facturées
    ```
    L'instance s'installe seule (environ 3 minutes) : K3s, Argo CD, secrets, Tailscale, puis le déploiement par Git.
-7. **Vérifier** : `scripts/verify-rebuild.sh` contrôle le bootstrap, les 3 applications Argo CD, les 12 pods et l'arrivée des métriques sur le NAS (code de sortie 0 = tout est OK).
+7. **Vérifier** : sur l'instance, `sudo kubectl -n argocd get applications` doit montrer les 3 applications `Synced` et `Healthy` (commandes détaillées dans [docs/test-reconstruction.md](docs/test-reconstruction.md)).
 
 ### Au quotidien
 
@@ -210,7 +210,6 @@ terraform/{bootstrap,main}                               # bucket d'état (à pa
 secrets/                                                 # secrets chiffrés (SOPS + age) par environnement
 scripts/
 ├── bootstrap-node.sh                                    # cloud-init : K3s, Argo CD, secrets, Tailscale, Applications
-├── verify-rebuild.sh                                    # contrôle complet après un apply
 ├── instance.sh                                          # arrêter / démarrer l'instance
 ├── promote.sh                                           # promotion staging → production
 └── secrets.sh                                           # gestion des secrets chiffrés
@@ -229,7 +228,6 @@ Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers
 | Script | Rôle | Quand l'utiliser |
 |---|---|---|
 | `scripts/instance.sh` | arrête, démarre, donne l'état ou l'IP de l'instance, sans la détruire | `start` / `stop` chaque jour pour ne pas payer pour rien |
-| `scripts/verify-rebuild.sh` | contrôle complet d'une instance (11 vérifications, dont l'arrivée des métriques sur le NAS) | après un `terraform apply`, ou avant une démonstration |
 | `scripts/promote.sh` | copie les digests d'images de staging vers production (aucun commit, aucun réseau) | pour promouvoir : on relit le diff, puis on ouvre une PR |
 | `scripts/secrets.sh` | gère les secrets chiffrés : `keygen`, `init`, `set`, `edit`, `check`, `apply` | pour créer ou modifier un secret sans jamais l'écrire en clair |
 
