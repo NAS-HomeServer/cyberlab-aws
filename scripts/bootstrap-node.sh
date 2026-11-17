@@ -121,9 +121,18 @@ if ts_key="$(aws --region "$AWS_REGION" ssm get-parameter --name "$TS_PARAM" --w
   # enable : tailscaled repart seul apres chaque arret/demarrage de l'instance (etat dans /var/lib/tailscale).
   systemctl enable --now tailscaled
   # Pas de DNS Tailscale (les pods gardent le DNS du cluster) ; etiquette pour limiter l'acces par ACL.
-  TS_AUTHKEY="$ts_key" tailscale up --hostname=cyberlab-aws --accept-dns=false --advertise-tags=tag:cyberlab-aws
+  # La cle passe par un fichier (--auth-key=file:...), pas par la ligne de commande, pour ne pas
+  # apparaitre dans la liste des processus. Sans cle valable, "tailscale up" attendrait une
+  # connexion interactive indefiniment : le delai evite de bloquer tout le bootstrap.
+  ts_keyfile="$WORK/tskey"
+  printf '%s' "$ts_key" > "$ts_keyfile"
   unset ts_key
-  tailscale status | head -5
+  if timeout 120 tailscale up --auth-key="file:$ts_keyfile" --hostname=cyberlab-aws --accept-dns=false --advertise-tags=tag:cyberlab-aws; then
+    tailscale status | head -5
+  else
+    log "ATTENTION : Tailscale n'a pas pu rejoindre le reseau (cle refusee, expiree ou ACL) ; la supervision ne remontera pas au NAS."
+  fi
+  shred -u "$ts_keyfile"
 else
   log "ATTENTION : parametre $TS_PARAM introuvable, Tailscale non installe (la supervision ne remontera pas au NAS)."
 fi
