@@ -59,7 +59,10 @@ Ce paramètre n'est pas détruit par `terraform destroy` (il n'est pas géré pa
 3. K3s (sans traefik ni servicelb) ;
 4. Argo CD ;
 5. clonage de ce dépôt (`repo_ref`, `main` par défaut) ;
-6. lecture de la clé age dans SSM, `secrets.sh check` puis `apply` pour staging et production, puis suppression de la clé du disque.
+6. lecture de la clé age dans SSM, `secrets.sh check` puis `apply` pour staging et production, puis suppression de la clé du disque ;
+7. création des `Application` Argo CD (`k8s/argocd/applications/`) : les backends, les tunnels et la supervision se déploient ensuite depuis Git (voir [docs/gitops.md](../docs/gitops.md)).
+
+**Mémoire** : K3s, Argo CD, les 6 pods applicatifs et la supervision ne tiennent pas confortablement dans les 2 Go d'une `t3.small` (il restait ~750 Mo avec Argo CD seul). Utiliser `instance_type = "t3.medium"` dans `terraform.tfvars`.
 
 Chaque téléchargement est épinglé par version **et** par empreinte SHA-256. Pour tester une branche avant fusion : `repo_ref = "ma-branche"` dans `terraform.tfvars`.
 
@@ -71,6 +74,8 @@ sudo cloud-init status --wait        # attendre "status: done"
 sudo tail -5 /var/log/cyberlab-bootstrap.log   # "Bootstrap termine."
 sudo kubectl get pods -A             # argocd-* Running
 sudo kubectl -n cyberlab-staging get secrets   # 5 secrets
+sudo kubectl -n argocd get applications        # cyberlab-staging, cyberlab-production, monitoring : Synced / Healthy
+sudo kubectl -n cyberlab-production get pods   # 3 backends + 3 tunnels Running
 ```
 
 ## 3. Au quotidien : arrêter, ne pas détruire

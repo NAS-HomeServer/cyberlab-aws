@@ -4,7 +4,7 @@ Migration du cyberlab (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrato
 
 Le NAS reste la production tant que la bascule n'est pas décidée : son dépôt, [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra), n'est pas modifié. La supervision (Prometheus, Grafana, Alertmanager) reste dans [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring).
 
-> État : étape 5 sur 7 (manifestes Kubernetes validés par la CI, infrastructure AWS en Terraform, secrets chiffrés, bootstrap de l'instance : K3s, ArgoCD, secrets). Les applications ArgoCD et la liaison avec le NAS arrivent par petites PR, une par étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
+> État : étape 6 sur 7 (manifestes validés par la CI, infrastructure AWS en Terraform, secrets chiffrés, bootstrap de l'instance, déploiement GitOps par Argo CD avec promotion staging → production et rollback par `git revert`, voir [docs/gitops.md](docs/gitops.md)). La liaison avec le NAS et le test de reconstruction arrivent par petites PR, une par étape. Les décisions et difficultés sont consignées dans [docs/notes-projet.md](docs/notes-projet.md).
 
 ## Contenu
 

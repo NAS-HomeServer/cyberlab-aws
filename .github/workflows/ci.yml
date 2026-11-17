@@ -48,7 +48,7 @@ jobs:
 
       - name: shellcheck
         run: |
-          docker run --rm -v "$PWD":/w -w /w "$SHELLCHECK_IMAGE" \
+          docker run --rm -v "$PWD":/w -w /w "$SHELLCHECK_IMAGE" -x \
             ci/render.sh ci/verify-signatures.sh ci/scan-images.sh scripts/instance.sh scripts/secrets.sh scripts/bootstrap-node.sh ci/check-secrets-encrypted.sh \
             k8s/kind/check-agent-config.sh k8s/kind/test.sh k8s/kind/test-resilience.sh
 
@@ -137,9 +137,18 @@ jobs:
       - name: Resilience du remote_write (coupure puis retablissement)
         run: k8s/kind/test-resilience.sh 90
 
+      # Meme chose avec Argo CD aux commandes : il clone ce depot et deploie l'overlay kind.
+      # On libere d'abord le premier cluster (memoire du runner).
+      - name: GitOps sur kind (Argo CD synchronise, selfHeal, recreation)
+        run: |
+          k8s/kind/test.sh --cleanup
+          k8s/kind/test-argocd.sh "${{ github.head_ref || github.ref_name }}"
+
       - name: Etat du cluster (en cas d'echec)
         if: failure()
         run: |
+          kubectl --context kind-cyberlab-argocd -n argocd get applications || true
+          kubectl --context kind-cyberlab-argocd get pods -A -o wide || true
           kubectl --context kind-cyberlab-test get pods -A -o wide || true
           kubectl --context kind-cyberlab-test -n monitoring logs deploy/prometheus-agent --tail=50 || true
           kubectl --context kind-cyberlab-test get events -A --sort-by=.lastTimestamp | tail -40 || true
