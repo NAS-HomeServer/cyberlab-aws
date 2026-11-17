@@ -109,7 +109,7 @@ Tu dois voir les jobs `aws-kubelet`, `aws-cadvisor`, `aws-node`, `aws-kube-state
 | Mémoire disponible sur l'instance | `node_memory_MemAvailable_bytes{cluster="aws-k3s"}` |
 | Retard du remote_write (agent) | `time() - prometheus_remote_storage_queue_highest_sent_timestamp_seconds{cluster="aws-k3s"}` |
 
-Si l'agent perd le NAS (coupure, redémarrage), il garde ses échantillons en mémoire et dans son WAL (4 h) puis les renvoie : sans trou visible (testé par `k8s/kind/test-resilience.sh`).
+Si l'agent perd le NAS (coupure, redémarrage), il garde ses échantillons en mémoire et dans son WAL (4 h) puis les renvoie : sans trou visible (testé une fois à la main, 90 s de coupure).
 
 À surveiller sur le NAS : la mémoire de Prometheus est limitée à 768 Mo ; le cyberlab AWS ajoute quelques milliers de séries (bornées par `sample_limit` dans l'agent). Contrôle `prometheus_tsdb_head_series` après quelques jours.
 

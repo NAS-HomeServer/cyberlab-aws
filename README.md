@@ -139,7 +139,7 @@ Le dépôt est **public** : la règle est qu'aucun secret n'y entre, ni en clair
 
 **Comment l'instance accède à ses deux paramètres sans clé stockée** : elle a un rôle IAM (`terraform/main/iam.tf`) qui n'autorise que `ssm:GetParameter` sur ces deux paramètres, et rien d'autre (ni S3, ni EC2, ni IAM). Les identifiants temporaires du rôle sont fournis par le service de métadonnées, durci en IMDSv2 avec `hop limit = 1` : un pod compromis ne peut pas les atteindre.
 
-**Côté CI** : `ci.yml` n'utilise aucun secret du dépôt et ne demande que `permissions: contents: read`. Le workflow `sync-digests.yml` utilise uniquement le `GITHUB_TOKEN` fourni automatiquement, pour ouvrir une pull request. Les runners sont hébergés par GitHub, jamais auto-hébergés : une PR venue d'un fork n'exécute donc rien sur ta machine et n'a rien à voler.
+**Côté CI** : `ci.yml` n'utilise aucun secret du dépôt et ne demande que `permissions: contents: read`. Aucun workflow n'écrit dans le dépôt. Les runners sont hébergés par GitHub, jamais auto-hébergés : une PR venue d'un fork n'exécute donc rien sur ta machine et n'a rien à voler.
 
 **Le jour où un `terraform plan` sera ajouté à la CI** : il faudra une authentification **OIDC** GitHub → AWS avec un rôle en lecture seule, sans clé stockée, et le garder inaccessible aux PR de forks.
 
@@ -156,7 +156,7 @@ Les 3 backends sont construits et publiés dans le registre GitHub (**ghcr.io**)
 
 - **Une image est toujours désignée par son digest** (`@sha256:…`) et non par une étiquette comme `latest` : l'image déployée est exactement celle qui a été validée. Les digests sont écrits dans `k8s/cyberlab/overlays/{staging,production}/kustomization.yaml`.
 - **Chaque dépôt de backend signe son image** (Cosign, sans clé, via son workflow GitHub). La CI de ce dépôt vérifie la signature (`ci/verify-signatures.sh`) : une image non signée par le bon dépôt bloque la fusion.
-- **Pour déployer une nouvelle version** : le dépôt du backend publie l'image, son digest arrive dans staging (workflow `Sync digests`), puis on le promeut en production (`scripts/promote.sh`). Voir [docs/gitops.md](docs/gitops.md).
+- **Pour déployer une nouvelle version** : le dépôt du backend publie l'image, on écrit son digest dans l'overlay staging (une pull request), puis on le promeut en production (`scripts/promote.sh`). Voir [docs/gitops.md](docs/gitops.md).
 
 ## Installation complète
 
@@ -195,7 +195,7 @@ Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage
 | Revenir en arrière | `git revert` du commit de fusion, via une PR → [docs/gitops.md](docs/gitops.md) |
 | Voir l'état du déploiement | `sudo kubectl -n argocd get applications` (sur l'instance), ou l'interface Argo CD par tunnel SSH |
 | Déclencher une alerte pour la démonstration | [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) §5 |
-| Mettre à jour les images de staging | workflow `Sync digests` (toutes les 6 h) : PR automatique depuis le compose du NAS |
+| Mettre à jour les images de staging | modifier le digest dans `k8s/cyberlab/overlays/staging/kustomization.yaml`, via une PR |
 | Reconstruire de zéro et vérifier | [docs/test-reconstruction.md](docs/test-reconstruction.md) |
 
 ## Structure du dépôt
@@ -216,7 +216,7 @@ scripts/
 └── secrets.sh                                           # gestion des secrets chiffrés
 nas-monitoring/                                          # règles d'alerte pour le Prometheus du NAS + tests promtool
 ci/                                                      # scripts de la CI (rendu, signatures Cosign, scan, synchro des digests)
-.github/workflows/                                       # ci.yml (pipeline), sync-digests.yml
+.github/workflows/                                       # ci.yml (pipeline)
 docs/                                                    # gitops, test de reconstruction, supervision NAS, notes de projet
 ```
 
@@ -238,10 +238,8 @@ Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers
 | Script | Rôle | Lancé par |
 |---|---|---|
 | `scripts/bootstrap-node.sh` | installe K3s, Argo CD, Tailscale, déchiffre et applique les secrets, crée les 3 applications Argo CD | cloud-init, une seule fois au premier démarrage de l'instance |
-| `ci/sync-digests.sh` | aligne les digests de staging sur ceux de `cyberlab-infra` (lecture seule) | workflow `Sync digests`, toutes les 6 h |
 | `ci/render.sh` | transforme chaque overlay Kustomize en un YAML complet, celui que le cluster recevra | la CI, avant kubeconform et Trivy |
 | `ci/verify-signatures.sh` | vérifie la signature Cosign de chaque image backend | la CI (contrôle Security) |
-| `ci/scan-images.sh` | scanne les vulnérabilités des images avec Trivy (informatif, ne bloque jamais) | la CI (contrôle Security) |
 | `ci/check-secrets-encrypted.sh` | refuse tout secret qui ne serait pas chiffré par SOPS | la CI (contrôle Security) |
 | `nas-monitoring/check-rules.sh` | valide la syntaxe des règles d'alerte du NAS et leurs tests unitaires | la CI (contrôle Code Quality) |
 
@@ -249,16 +247,14 @@ Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers
 
 | Script | Rôle |
 |---|---|
-| `scripts/lib-digests.sh` | fonctions partagées pour lire et écrire les digests dans les `kustomization.yaml` ; utilisée par `promote.sh` et `sync-digests.sh` |
+| `scripts/lib-digests.sh` | fonctions partagées pour lire et écrire les digests dans les `kustomization.yaml` ; utilisée par `promote.sh` |
 
 ### Tests locaux sur kind (aucun appel à AWS)
 
 | Script | Ce qu'il prouve |
 |---|---|
 | `k8s/kind/test.sh` | déploiement complet : backends répondent sur `/health`, les séries de l'agent arrivent sur un faux NAS avec les bons labels |
-| `k8s/kind/test-resilience.sh` | si la liaison avec le NAS est coupée puis rétablie, l'agent rattrape son retard sans trou dans les séries |
 | `k8s/kind/test-argocd.sh` | Argo CD déploie depuis GitHub, annule une modification manuelle (selfHeal) et recrée une ressource supprimée |
-| `k8s/kind/test-secrets.sh` | la chaîne SOPS + age fonctionne de bout en bout, avec une clé jetable |
 | `k8s/kind/check-agent-config.sh` | la configuration du Prometheus Agent est valide (`promtool`) |
 
 ## Tester en local (aucun appel à AWS)
@@ -268,7 +264,6 @@ Prérequis : Docker, [kind](https://kind.sigs.k8s.io/), `kubectl`.
 ```bash
 k8s/kind/check-agent-config.sh kind   # promtool sur la config de l'agent
 k8s/kind/test.sh                      # déploiement complet + séries reçues par un faux NAS
-k8s/kind/test-resilience.sh           # coupe puis rétablit la liaison remote_write
 k8s/kind/test-argocd.sh               # Argo CD déploie l'overlay depuis GitHub, selfHeal, recréation
 k8s/kind/test.sh --cleanup && k8s/kind/test-argocd.sh --cleanup   # supprime les clusters de test
 ```
@@ -280,10 +275,10 @@ k8s/kind/test.sh --cleanup && k8s/kind/test-argocd.sh --cleanup   # supprime les
 | Étape | Contrôles |
 |---|---|
 | ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform (strict), promtool (agent et règles du NAS, avec tests unitaires), `terraform fmt` + `validate` |
-| ② Security | Gitleaks, signatures Cosign des backends, Trivy config sur Kubernetes et Terraform (HIGH/CRITICAL bloquants), scan Trivy des images (informatif) |
-| ③ Tests (kind) | déploiement complet sur un cluster jetable, résilience du `remote_write`, déploiement par Argo CD (selfHeal) |
+| ② Security | Gitleaks, signatures Cosign des backends, Trivy config sur Kubernetes et Terraform (HIGH/CRITICAL bloquants) |
+| ③ Tests (kind) | déploiement complet sur un cluster jetable, déploiement par Argo CD (selfHeal) |
 
-Les mêmes scripts se lancent en local : `ci/render.sh <dossier>`, `ci/verify-signatures.sh`, `ci/scan-images.sh <dossier>`, `nas-monitoring/check-rules.sh`.
+Les mêmes scripts se lancent en local : `ci/render.sh <dossier>`, `ci/verify-signatures.sh`, `nas-monitoring/check-rules.sh`.
 
 ## Documentation
 
