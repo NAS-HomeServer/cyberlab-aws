@@ -128,7 +128,7 @@ Conséquences :
   séries de l'agent reçues par un faux NAS avec `cluster` et `env` corrects.
 - Scan Sherlock réel (nom d'utilisateur fictif) sous `readOnlyRootFilesystem` : fonctionne,
   le doute sur une écriture de `<user>.txt` est levé.
-- `k8s/kind/test-resilience.sh` : liaison coupée 90 s puis rétablie, aucun trou
+- Test de résilience (script retiré depuis, pour simplifier) : liaison coupée 90 s puis rétablie, aucun trou
   (écart max entre échantillons bruts = intervalle de scrape).
 
 ### Questions repoussées aux étapes suivantes
@@ -148,8 +148,8 @@ Conséquences :
 | Étape | Contrôles | Bloquant |
 |---|---|---|
 | ① Code Quality | yamllint `--strict`, shellcheck, rendu Kustomize puis kubeconform `-strict` (schémas Kubernetes), promtool sur la config de l'agent (overlays kind et aws) | oui |
-| ② Security | Gitleaks, signatures Cosign des images backends, Trivy config (HIGH/CRITICAL) sur les manifestes rendus, scan Trivy des images | tout sauf le scan des images |
-| ③ Tests (kind) | déploiement complet sur un cluster kind jetable, puis test de résilience du `remote_write` | oui |
+| ② Security | Gitleaks, signatures Cosign des images backends, Trivy config (HIGH/CRITICAL) sur les manifestes rendus, (le scan Trivy des images a été retiré de la CI pour simplifier) | oui |
+| ③ Tests (kind) | déploiement complet sur un cluster kind jetable, puis déploiement par Argo CD | oui |
 
 Principe : on valide ce que le cluster va réellement recevoir (la sortie de
 `kubectl kustomize`), pas les fichiers sources. C'est ce qui l'a justifié : les
@@ -330,7 +330,7 @@ Leçon : une PR par branche, toutes ouvertes directement sur `main`.
 
 ### Validation
 
-`k8s/kind/test-secrets.sh` : avec une clé **jetable**, dans un dépôt temporaire, `keygen`,
+Test (script retiré depuis, pour simplifier) : avec une clé **jetable**, dans un dépôt temporaire, `keygen`,
 `init`, `edit`, contrôle qu'aucune valeur n'est en clair, `apply` sur kind avec relecture de
 la valeur dans le cluster, et refus de déchiffrer avec une autre clé.
 
@@ -389,8 +389,8 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
   l'URL et la branche de Terraform (`repo_url`, `repo_ref`) réécrites par `sed`.
 - Promotion : `scripts/promote.sh` copie les digests de staging vers production ; la
   production ne reçoit jamais directement une image.
-- Synchronisation des digests (**option A** retenue) : `ci/sync-digests.sh` lit le compose de
-  `cyberlab-infra` (lecture seule) et le workflow `sync-digests.yml` ouvre une PR sur staging.
+- Synchronisation des digests : un workflow automatique avait été écrit, puis retiré pour
+  simplifier ; le digest de staging se met à jour par une PR manuelle.
 - Rollback : `git revert` de la fusion fautive ; Argo CD réapplique l'ancien digest.
 - Test `k8s/kind/test-argocd.sh` : Argo CD (même version et même empreinte que le bootstrap,
   lues dans le script) clone ce dépôt sur GitHub et déploie l'overlay kind ; on vérifie
@@ -509,7 +509,6 @@ Instance neuve créée par un seul `terraform apply` (aucune intervention ensuit
 ### Reste à confirmer
 
 - Promotion staging → production et `git revert` rejoués sur AWS (démonstration).
-- Workflow `Sync digests` : premier déclenchement réel (réglage de dépôt requis).
 
 ## Réplicas : un seul partout, deux pour `dns-analyzer` en production
 
