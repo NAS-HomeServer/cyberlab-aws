@@ -6,7 +6,7 @@
 
 | Détruit par `terraform destroy` | Conservé (volontairement) |
 |---|---|
-| VPC, sous-réseau, groupe de sécurité, instance EC2, rôle IAM, IP élastique, budget | Bucket S3 de l'état Terraform (module `bootstrap/`, `prevent_destroy`) |
+| VPC, sous-réseau, groupe de sécurité, instance EC2, rôle IAM, IP élastique, budget | L'état Terraform local (`terraform/main/terraform.tfstate`, sur le poste) |
 | Tout le cluster K3s, Argo CD, les pods, les Secrets du cluster | Paramètres SSM `/cyberlab-aws/age-key` et `/cyberlab-aws/tailscale-authkey` (créés à la main, une fois) |
 | | Le dépôt Git (source de vérité), la clé age sur le poste, la configuration du NAS |
 
@@ -14,7 +14,7 @@ L'IP publique change après un destroy (nouvelle IP élastique) : sans conséque
 
 ## Avant de commencer
 
-- `terraform/main/terraform.tfvars` et `backend.hcl` présents (voir [terraform/README.md](../terraform/README.md)).
+- `terraform/main/terraform.tfvars` présent (voir [terraform/README.md](../terraform/README.md)) et le fichier `terraform.tfstate` de la dernière exécution, sur le même poste : sans lui, Terraform ne retrouve pas ce qu'il a créé.
 - Les deux paramètres SSM existent : `aws --region eu-west-3 ssm describe-parameters --query 'Parameters[].Name'`.
 - Clé Tailscale non expirée (90 jours maximum, voir [changements-nas-monitoring.md](changements-nas-monitoring.md) §1).
 - `main` contient tout ce qu'on veut tester : le bootstrap clone `repo_ref` (`main` par défaut).
@@ -27,7 +27,7 @@ cd terraform/main
 # 1. Tout détruire. Relire la liste : rien d'autre que les ressources de ce module.
 terraform destroy
 
-# 2. Vérifier que l'état est vide (le bucket d'état, lui, n'est pas concerné).
+# 2. Vérifier que l'état est vide.
 terraform state list            # ne doit rien afficher
 
 # 3. Tout reconstruire. C'est la SEULE commande ; ensuite on n'intervient plus.
