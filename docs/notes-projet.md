@@ -1,7 +1,6 @@
 # Notes de projet — migration du cyberlab vers AWS
 
-Décisions, alternatives écartées et difficultés rencontrées, par étape. Ce document décrit
-l'état **actuel** du projet : ce qui a été écrit puis retiré pour simplifier n'y figure plus.
+Décisions, alternatives écartées et difficultés rencontrées, par étape.
 
 ## Contexte et périmètre
 
@@ -116,10 +115,10 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
 - **Protection de `main`** : PR obligatoire, pas de force-push, les trois checks obligatoires. Sans
   filtre de chemins, une PR qui ne touche que la documentation obtient aussi ses checks (quelques
   minutes de CI en plus).
-- **Limite connue : les images ne sont pas scannées en CI** (le scan Trivy des images a été retiré
-  pour simplifier). Les 7 images remontaient des vulnérabilités HIGH/CRITICAL, qu'un scan bloquant
-  aurait transformées en frein dès le premier jour ; la CI de chaque backend scanne déjà son image.
-  À présenter comme un risque connu : mise à jour par Renovate, reconstruction des backends.
+- **Limite connue : la CI de ce dépôt ne scanne pas les images** (seulement les configurations). Un
+  scan bloquant des images existantes aurait remonté des vulnérabilités HIGH/CRITICAL dès le premier
+  jour ; la CI de chaque backend scanne déjà son image. Risque connu et suivi : mises à jour par Renovate,
+  reconstruction des backends.
 
 ### Difficultés rencontrées
 
@@ -248,10 +247,9 @@ Mode d'emploi : [gitops.md](gitops.md).
   (`repo_ref`) sans modifier les fichiers.
 - **Une branche, deux dossiers** : staging et production suivent `main` mais des dossiers différents.
 - **Secrets hors Argo CD** : appliqués par le bootstrap, donc jamais élagués par `prune`.
-- **Argo CD, la bascule staging → production et le `git revert` ne sont pas testés sur kind** : un test
-  Argo CD sur kind (clonage depuis GitHub) avait été écrit, puis retiré pour simplifier : lent, et la
-  démonstration `apply` puis `destroy` sur AWS prouve déjà qu'Argo CD déploie tout. Ils se montrent en
-  démonstration sur AWS.
+- **Argo CD, la bascule staging → production et le `git revert` ne sont pas testés sur kind** : la
+  démonstration `apply` puis `destroy` sur AWS prouve qu'Argo CD déploie tout, et ces opérations se
+  montrent en démonstration sur AWS. Les tests kind couvrent les manifestes, pas Argo CD.
 
 ## Étape 7 — Lien avec le NAS (Tailscale, remote_write, alertes)
 
