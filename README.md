@@ -6,6 +6,43 @@ Migration du cyberlab (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrato
 
 Le NAS reste la production tant que la bascule n'est pas décidée : son dépôt, [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra), n'est pas modifié. La supervision (Prometheus, Grafana, Alertmanager) reste dans [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring).
 
+## Ce qui a été réalisé, en bref
+
+```
+1. Infrastructure AWS avec Terraform
+     ├─ un réseau privé (VPC), une instance EC2, un rôle IAM limité, une IP élastique
+     ├─ un budget avec alertes e-mail
+     └─ un bucket S3 à part pour l'état Terraform, qui n'est jamais détruit
+
+2. Un cluster Kubernetes (K3s) qui s'installe tout seul
+     ├─ un script de démarrage (cloud-init) installe K3s, Argo CD et Tailscale
+     └─ aucun geste manuel : un seul « terraform apply » suffit
+
+3. Déploiement automatique depuis Git (GitOps, Argo CD)
+     ├─ 2 environnements : staging et production
+     ├─ 3 backends + 3 tunnels cloudflared dans chacun
+     ├─ promotion staging → production par pull request
+     └─ retour en arrière par « git revert »
+
+4. Supervision sur le NAS
+     ├─ un Prometheus Agent envoie les métriques au Prometheus du NAS (Tailscale)
+     └─ des alertes testées préviennent sur Discord
+
+5. Sécurité
+     ├─ secrets chiffrés dans Git (SOPS + age), jamais en clair
+     ├─ images référencées par digest et signatures Cosign vérifiées
+     ├─ aucun port entrant public (tunnels sortants, SSH limité à une IP)
+     ├─ accès au NAS limité par ACL au seul port de Prometheus
+     └─ disque chiffré, accès aux métadonnées AWS durci (IMDSv2)
+
+6. Qualité et preuves
+     ├─ CI à 3 contrôles obligatoires (qualité, sécurité, tests sur kind)
+     ├─ test de reconstruction : destroy puis apply, tout revient sans intervention
+     └─ script de vérification : 11 contrôles, dont l'arrivée des métriques sur le NAS
+```
+
+Résultat mesuré le 17/11/2026 : une instance neuve est entièrement installée en **moins de 3 minutes** (hors création AWS) et les 11 contrôles de `scripts/verify-rebuild.sh` passent. Détails et difficultés rencontrées : [docs/notes-projet.md](docs/notes-projet.md).
+
 ## Architecture
 
 ```
