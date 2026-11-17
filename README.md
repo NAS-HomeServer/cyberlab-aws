@@ -44,7 +44,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 
 4. Supervision sur le NAS
      ├─ un Prometheus Agent envoie les métriques au Prometheus du NAS (Tailscale)
-     └─ des alertes testées préviennent sur Discord
+     └─ des alertes préviennent sur Discord
 
 5. Sécurité
      ├─ secrets chiffrés dans Git (SOPS + age), jamais en clair
@@ -85,22 +85,9 @@ Résultat mesuré le 17/11/2026 : une instance neuve est entièrement installée
 
 Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit le changement → il l'applique au cluster. Personne ne lance `kubectl apply`. Détails : [docs/gitops.md](docs/gitops.md).
 
-### La chaîne complète : de `terraform apply` aux applications
+### Qui installe quoi
 
-```
-terraform apply
-   └─ crée l'EC2 (t3.medium) + réseau + IAM + budget, avec un user_data
-        └─ cloud-init exécute scripts/bootstrap-node.sh (≈ 3 min)
-             1. paquets de base, AWS CLI, SOPS
-             2. K3s (sans traefik ni servicelb)
-             3. Argo CD (install.yaml épinglé par version + SHA-256)
-             4. clone du dépôt
-             5. clé age lue dans SSM → déchiffrement des secrets → apply dans le cluster → clé supprimée du disque
-             6. Tailscale (rejoint le tailnet pour joindre le NAS)
-             7. création des 3 Applications Argo CD
-                  └─ Argo CD déploie ensuite depuis Git :
-                     cyberlab-staging, cyberlab-production, monitoring
-```
+`terraform apply` crée l'EC2, le réseau, l'IAM et le budget, avec un `user_data`. Au premier démarrage, cloud-init exécute `scripts/bootstrap-node.sh` (environ 3 minutes) : paquets, K3s, Argo CD, déchiffrement des secrets (la clé age est lue dans SSM puis supprimée du disque), Tailscale, puis création des 3 `Application` Argo CD, qui déploient le reste depuis Git.
 
 | Élément | Installé par | Quand |
 |---|---|---|
@@ -122,25 +109,11 @@ Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_rele
 | Prometheus Agent → NAS par Tailscale | supervision centralisée sur l'existant, aucun port ouvert, accès limité par ACL |
 | État Terraform local | projet à un seul opérateur : le fichier `terraform.tfstate` survit aux `destroy` sur le poste, aucun bucket à créer ni à expliquer |
 
-## Où sont les secrets (clé AWS, kubeconfig, CI)
+## Secrets
 
-Le dépôt est **public** : la règle est qu'aucun secret n'y entre, ni en clair, ni dans la CI. Voici où se trouve chacun.
+Le dépôt est **public** : aucun secret n'y entre en clair, ni dans la CI. Les secrets applicatifs (tokens des tunnels, `.env` des backends) sont dans Git **chiffrés par SOPS + age** ; la clé privée vit dans AWS Systems Manager, jamais dans le dépôt, et l'instance la supprime de son disque après usage. La CI refuse tout fichier non chiffré.
 
-| Secret | Où il vit | Ce qui le protège |
-|---|---|---|
-| **Clé AWS** (pour `terraform apply`) | uniquement sur ton poste (AWS CLI configuré) | **absente de GitHub** : la CI ne parle jamais à AWS (`init -backend=false`, aucun `plan` ni `apply`). `*.tfvars` et `*.tfstate` sont dans `.gitignore` |
-| **kubeconfig** | uniquement sur l'instance (`/etc/rancher/k3s/`) | **absent de GitHub** : la CI ne déploie rien sur le vrai cluster, c'est Argo CD (dans le cluster) qui tire depuis Git. Le port 6443 n'est pas ouvert (voir `security.tf`) |
-| **Secrets applicatifs** (tokens des 3 tunnels cloudflared, `.env` des backends) | dans Git, **chiffrés par SOPS + age** (`secrets/*/*.sops.yaml`) | la CI refuse tout fichier non chiffré (`ci/check-secrets-encrypted.sh`) et passe Gitleaks. Seule la clé **publique** age est versionnée (`.sops.yaml`) |
-| **Clé privée age** | AWS Systems Manager Parameter Store (SecureString) | lue par l'instance au premier démarrage, puis **supprimée du disque** (`shred`). Jamais dans le dépôt, ni dans `user_data`, ni dans l'état Terraform |
-| **Clé d'authentification Tailscale** | Parameter Store (SecureString), créée à la main | même chemin que la clé age ; sans elle, l'instance démarre sans lien vers le NAS |
-| **Identifiants Argo CD → Git** | aucun | le dépôt est public, Argo CD le clone sans identifiant |
-| **Accès au registre d'images** | aucun | les images ghcr.io sont publiques ; leur signature Cosign est vérifiée **sans clé** (identité du workflow GitHub) |
-
-**Comment l'instance accède à ses deux paramètres sans clé stockée** : elle a un rôle IAM (`terraform/main/iam.tf`) qui n'autorise que `ssm:GetParameter` sur ces deux paramètres, et rien d'autre (ni S3, ni EC2, ni IAM). Les identifiants temporaires du rôle sont fournis par le service de métadonnées, durci en IMDSv2 avec `hop limit = 1` : un pod compromis ne peut pas les atteindre.
-
-**Côté CI** : `ci.yml` n'utilise aucun secret du dépôt et ne demande que `permissions: contents: read`. Aucun workflow n'écrit dans le dépôt. Les runners sont hébergés par GitHub, jamais auto-hébergés : une PR venue d'un fork n'exécute donc rien sur ta machine et n'a rien à voler.
-
-**Le jour où un `terraform plan` sera ajouté à la CI** : il faudra une authentification **OIDC** GitHub → AWS avec un rôle en lecture seule, sans clé stockée, et le garder inaccessible aux PR de forks.
+→ **[secrets/README.md](secrets/README.md)** : à quoi servent SOPS et age, comment les utiliser, où vit chaque secret, démonstration et questions probables du jury.
 
 ## D'où viennent les images
 
@@ -162,7 +135,7 @@ Les 3 backends sont construits et publiés dans le registre GitHub (**ghcr.io**)
 Prérequis sur le poste : Terraform ≥ 1.10, AWS CLI configuré, [age](https://github.com/FiloSottile/age) et [SOPS](https://github.com/getsops/sops), `kubectl` (pour le test local), Docker + [kind](https://kind.sigs.k8s.io/) (pour le test local). Côté services : un compte AWS, un domaine Cloudflare avec 6 tunnels créés (un par backend et par environnement), un compte Tailscale, et le Prometheus du NAS.
 
 1. **Cloner le dépôt** et créer une clé SSH dédiée : `ssh-keygen -t ed25519 -f ~/.ssh/cyberlab-aws`.
-2. **Secrets** (une fois) : générer la paire age, renseigner les tokens des tunnels et les variables des backends, chiffrés par SOPS. → [secrets/README.md](secrets/README.md)
+2. **Secrets** (une fois) : générer la paire age, renseigner les tokens des tunnels et les variables des backends, chiffrés par SOPS. → [secrets/README.md](secrets/README.md) (mise en route)
 3. **Paramètres SSM** (une fois, à la main) : la clé privée age (`/cyberlab-aws/age-key`) et la clé d'authentification Tailscale (`/cyberlab-aws/tailscale-authkey`). → [terraform/README.md](terraform/README.md) §2 et §3
 4. **Réglages côté NAS** (une fois) : tag et ACL Tailscale, récepteur `remote_write` sur Prometheus, règles d'alerte. → [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md)
 5. **Créer l'infrastructure** : copier `terraform.tfvars.example` (ignoré par git) dans `terraform/main`, puis :
@@ -207,47 +180,32 @@ secrets/                                                 # secrets chiffrés (SO
 scripts/
 ├── bootstrap-node.sh                                    # cloud-init : K3s, Argo CD, secrets, Tailscale, Applications
 └── secrets.sh                                           # gestion des secrets chiffrés
-nas-monitoring/                                          # règles d'alerte pour le Prometheus du NAS + tests promtool
-ci/                                                      # scripts de la CI (rendu, signatures Cosign, scan, synchro des digests)
+nas-monitoring/                                          # règles d'alerte pour le Prometheus du NAS
+ci/                                                      # scripts de la CI (rendu, signatures Cosign, secrets chiffrés)
 .github/workflows/                                       # ci.yml (pipeline)
 docs/                                                    # gitops, test de reconstruction, supervision NAS, notes de projet
 ```
 
 Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers temporaires dans `/tmp`) : aucun volume n'est nécessaire.
 
-## À quoi sert chaque script
-
-### Au quotidien (sur ton poste)
-
-| Script | Rôle | Quand l'utiliser |
-|---|---|---|
-| `scripts/secrets.sh` | gère les secrets chiffrés : `keygen`, `init`, `set`, `edit`, `check`, `apply` | pour créer ou modifier un secret sans jamais l'écrire en clair |
-
-### Lancés automatiquement (tu n'as rien à faire)
+## Scripts et tests locaux
 
 | Script | Rôle | Lancé par |
 |---|---|---|
-| `scripts/bootstrap-node.sh` | installe K3s, Argo CD, Tailscale, déchiffre et applique les secrets, crée les 3 applications Argo CD | cloud-init, une seule fois au premier démarrage de l'instance |
-| `ci/render.sh` | transforme chaque overlay Kustomize en un YAML complet, celui que le cluster recevra | la CI, avant kubeconform et Trivy |
-| `ci/verify-signatures.sh` | vérifie la signature Cosign de chaque image backend | la CI (contrôle Security) |
-| `ci/check-secrets-encrypted.sh` | refuse tout secret qui ne serait pas chiffré par SOPS | la CI (contrôle Security) |
+| `scripts/secrets.sh` | gère les secrets chiffrés : `keygen`, `init`, `set`, `edit`, `check`, `apply` | toi, sur ton poste |
+| `scripts/bootstrap-node.sh` | installe K3s, Argo CD, Tailscale, déchiffre les secrets, crée les 3 applications | cloud-init, une seule fois |
+| `ci/render.sh` | rend chaque overlay Kustomize en un YAML complet (ce que le cluster recevra) | la CI |
+| `ci/verify-signatures.sh` | vérifie la signature Cosign de chaque image backend | la CI |
+| `ci/check-secrets-encrypted.sh` | refuse tout secret non chiffré par SOPS | la CI |
+| `k8s/kind/test.sh` | déploiement complet sur kind : `/health` des backends, séries de l'agent reçues par un faux NAS | la CI, ou toi |
+| `k8s/kind/test-argocd.sh` | Argo CD déploie depuis GitHub, selfHeal, recréation d'une ressource | la CI, ou toi |
+| `k8s/kind/check-agent-config.sh` | configuration du Prometheus Agent valide (`promtool`) | la CI, ou toi |
 
-### Tests locaux sur kind (aucun appel à AWS)
-
-| Script | Ce qu'il prouve |
-|---|---|
-| `k8s/kind/test.sh` | déploiement complet : backends répondent sur `/health`, les séries de l'agent arrivent sur un faux NAS avec les bons labels |
-| `k8s/kind/test-argocd.sh` | Argo CD déploie depuis GitHub, annule une modification manuelle (selfHeal) et recrée une ressource supprimée |
-| `k8s/kind/check-agent-config.sh` | la configuration du Prometheus Agent est valide (`promtool`) |
-
-## Tester en local (aucun appel à AWS)
-
-Prérequis : Docker, [kind](https://kind.sigs.k8s.io/), `kubectl`.
+Tests en local (Docker, [kind](https://kind.sigs.k8s.io/) et `kubectl` requis, aucun appel à AWS) :
 
 ```bash
-k8s/kind/check-agent-config.sh kind   # promtool sur la config de l'agent
-k8s/kind/test.sh                      # déploiement complet + séries reçues par un faux NAS
-k8s/kind/test-argocd.sh               # Argo CD déploie l'overlay depuis GitHub, selfHeal, recréation
+k8s/kind/test.sh
+k8s/kind/test-argocd.sh
 k8s/kind/test.sh --cleanup && k8s/kind/test-argocd.sh --cleanup   # supprime les clusters de test
 ```
 
@@ -261,12 +219,11 @@ k8s/kind/test.sh --cleanup && k8s/kind/test-argocd.sh --cleanup   # supprime les
 | ② Security | Gitleaks, signatures Cosign des backends, Trivy config sur Kubernetes et Terraform (HIGH/CRITICAL bloquants) |
 | ③ Tests (kind) | déploiement complet sur un cluster jetable, déploiement par Argo CD (selfHeal) |
 
-Les mêmes scripts se lancent en local : `ci/render.sh <dossier>`, `ci/verify-signatures.sh`.
-
 ## Documentation
 
-- [docs/notes-projet.md](docs/notes-projet.md) : décisions, alternatives écartées, difficultés rencontrées (y compris les erreurs et leurs corrections)
+- [docs/notes-projet.md](docs/notes-projet.md) : décisions, alternatives écartées, difficultés rencontrées
 - [docs/gitops.md](docs/gitops.md) : Argo CD, promotion, rollback
 - [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`, et ce qui est contrôlé
 - [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) : Tailscale, récepteur Prometheus, règles, démonstration d'alerte
-- [terraform/README.md](terraform/README.md), [secrets/README.md](secrets/README.md)
+- [terraform/README.md](terraform/README.md) : Terraform pas à pas
+- [secrets/README.md](secrets/README.md) : SOPS + age expliqué, démonstration
