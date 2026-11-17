@@ -198,15 +198,13 @@ Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers
 | `ci/verify-signatures.sh` | vérifie la signature Cosign de chaque image backend | la CI |
 | `ci/check-secrets-encrypted.sh` | refuse tout secret non chiffré par SOPS | la CI |
 | `k8s/kind/test.sh` | déploiement complet sur kind : `/health` des backends, séries de l'agent reçues par un faux NAS | la CI, ou toi |
-| `k8s/kind/test-argocd.sh` | Argo CD déploie depuis GitHub, selfHeal, recréation d'une ressource | la CI, ou toi |
 | `k8s/kind/check-agent-config.sh` | configuration du Prometheus Agent valide (`promtool`) | la CI, ou toi |
 
 Tests en local (Docker, [kind](https://kind.sigs.k8s.io/) et `kubectl` requis, aucun appel à AWS) :
 
 ```bash
 k8s/kind/test.sh
-k8s/kind/test-argocd.sh
-k8s/kind/test.sh --cleanup && k8s/kind/test-argocd.sh --cleanup   # supprime les clusters de test
+k8s/kind/test.sh --cleanup   # supprime le cluster de test
 ```
 
 ## Pipeline CI
@@ -217,7 +215,7 @@ k8s/kind/test.sh --cleanup && k8s/kind/test-argocd.sh --cleanup   # supprime les
 |---|---|
 | ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform (strict), promtool (configuration de l'agent), `terraform fmt` + `validate` |
 | ② Security | Gitleaks, signatures Cosign des backends, Trivy config sur Kubernetes et Terraform (HIGH/CRITICAL bloquants) |
-| ③ Tests (kind) | déploiement complet sur un cluster jetable, déploiement par Argo CD (selfHeal) |
+| ③ Tests (kind) | déploiement complet sur un cluster jetable (backends, tunnels, agent, faux NAS) |
 
 ## Documentation
 

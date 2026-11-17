@@ -101,7 +101,7 @@ en dehors de `/tmp`.
 |---|---|---|
 | ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform, promtool, `terraform fmt` + `validate` | oui |
 | ② Security | secrets chiffrés (SOPS), Gitleaks, signatures Cosign des images, Trivy config (Kubernetes et Terraform, HIGH/CRITICAL) | oui |
-| ③ Tests (kind) | déploiement complet sur un cluster jetable, puis déploiement par Argo CD | oui |
+| ③ Tests (kind) | déploiement complet sur un cluster jetable | oui |
 
 On valide ce que le cluster va réellement recevoir (la sortie de `kubectl kustomize`), pas les fichiers
 sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
@@ -248,11 +248,10 @@ Mode d'emploi : [gitops.md](gitops.md).
   (`repo_ref`) sans modifier les fichiers.
 - **Une branche, deux dossiers** : staging et production suivent `main` mais des dossiers différents.
 - **Secrets hors Argo CD** : appliqués par le bootstrap, donc jamais élagués par `prune`.
-- **Test `k8s/kind/test-argocd.sh`** : Argo CD (même version et empreinte que le bootstrap) clone ce
-  dépôt sur GitHub et déploie l'overlay kind ; on vérifie Synced + Healthy, le selfHeal et la recréation
-  d'une ressource supprimée.
-- **Non rejoués sur kind** : la bascule staging → production et le `git revert` (il faudrait un serveur
-  Git dans le cluster) ; ils se montrent en démonstration sur AWS.
+- **Argo CD, la bascule staging → production et le `git revert` ne sont pas testés sur kind** : un test
+  Argo CD sur kind (clonage depuis GitHub) avait été écrit, puis retiré pour simplifier : lent, et la
+  démonstration `apply` puis `destroy` sur AWS prouve déjà qu'Argo CD déploie tout. Ils se montrent en
+  démonstration sur AWS.
 
 ## Étape 7 — Lien avec le NAS (Tailscale, remote_write, alertes)
 
