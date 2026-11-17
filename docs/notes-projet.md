@@ -428,8 +428,8 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
   bootstrap (version et SHA-256 épinglés), avec une clé d'authentification lue dans SSM
   (`/cyberlab-aws/tailscale-authkey`, même mécanisme que la clé age) ; l'agent écrit sur
   `http://100.104.202.81:9090/api/v1/write`.
-- Règles d'alerte pour le Prometheus du NAS (`nas-monitoring/cyberlab-aws.rules.yml`) et leurs
-  tests unitaires `promtool`, vérifiés par la CI. Guide des changements à appliquer sur le NAS :
+- Règles d'alerte pour le Prometheus du NAS (`nas-monitoring/cyberlab-aws.rules.yml`) (les tests unitaires
+  `promtool` ont été retirés depuis, pour simplifier). Guide des changements à appliquer sur le NAS :
   `docs/changements-nas-monitoring.md` (le dépôt HomeServer-monitoring n'est pas modifié ici).
 
 ### Choix et justifications

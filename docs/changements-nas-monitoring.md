@@ -81,7 +81,7 @@ curl -X POST http://localhost:9090/-/reload     # --web.enable-lifecycle est dé
 
 Elles partent par ton Alertmanager existant, vers Discord, sans changement de sa configuration. **Il n'y a pas d'alerte « métriques absentes »** : l'instance est arrêtée chaque soir, elle sonnerait tous les jours.
 
-Les règles sont testées dans la CI (`nas-monitoring/check-rules.sh` : syntaxe et tests unitaires avec des séries synthétiques).
+Les règles sont vérifiées par `yamllint` dans la CI (les tests unitaires `promtool` ont été retirés pour simplifier).
 
 ## 4. Vérifier que ça marche
 

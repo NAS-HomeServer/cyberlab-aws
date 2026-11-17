@@ -25,7 +25,6 @@
 | `k8s/argocd/applications/*.yaml` | Une `Application` par cible : `cyberlab-staging`, `cyberlab-production`, `monitoring`. Elles surveillent un dossier de ce dépôt et appliquent son contenu (`prune` et `selfHeal` activés). |
 | `scripts/bootstrap-node.sh` | Étape 7 : crée ces `Application` au premier démarrage de l'instance, avec l'URL et la branche choisies dans Terraform (`repo_url`, `repo_ref`). |
 | `scripts/promote.sh` | Copie les digests de staging vers production. Aucun commit, aucun réseau : on relit le diff puis on ouvre la PR. |
-| `scripts/lib-digests.sh` | Lecture/écriture des digests dans les `kustomization.yaml` (utilisé par `promote.sh`). |
 
 Les **secrets** ne passent pas par Argo CD : ils sont appliqués une fois par le bootstrap (`secrets.sh apply`). Argo CD ne les gère pas, donc `prune` ne peut pas les supprimer.
 
