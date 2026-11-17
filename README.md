@@ -58,7 +58,7 @@ Prérequis sur le poste : Terraform ≥ 1.10, AWS CLI configuré, [age](https://
    terraform plan                # relire avant d'appliquer
    terraform apply               # ⚠ crée des ressources facturées
    ```
-   L'instance s'installe seule (5 à 8 minutes) : K3s, Argo CD, secrets, Tailscale, puis le déploiement par Git.
+   L'instance s'installe seule (environ 3 minutes) : K3s, Argo CD, secrets, Tailscale, puis le déploiement par Git.
 7. **Vérifier** : `scripts/verify-rebuild.sh` contrôle le bootstrap, les 3 applications Argo CD, les 12 pods et l'arrivée des métriques sur le NAS (code de sortie 0 = tout est OK).
 
 ### Au quotidien
