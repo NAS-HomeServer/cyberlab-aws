@@ -342,3 +342,39 @@ la valeur dans le cluster, et refus de déchiffrer avec une autre clé.
   toucher au contexte courant.
 - **Limite connue** : ce test n'est pas dans la CI (il exige sops, age et un cluster kind
   avec le test principal) ; seul le garde-fou « tout est chiffré » y tourne.
+
+## Étape 5 — Bootstrap de l'instance (cloud-init, sans Ansible)
+
+### Ce qui a été fait
+
+- `scripts/bootstrap-node.sh`, exécuté une fois par cloud-init (`user_data` de l'instance) :
+  paquets, AWS CLI, SOPS, K3s, Argo CD, puis dépôt cloné, clé age lue dans SSM, `secrets.sh
+  check` + `apply` pour staging et production, clé supprimée du disque.
+- Terraform : `user_data` (script précédé de ses paramètres), `user_data_replace_on_change`,
+  politique IAM `ssm:GetParameter` sur **un seul** paramètre (la clé age), variables
+  `repo_url`, `repo_ref`, `age_key_parameter`.
+- CI : le script passe dans shellcheck.
+
+### Choix et justifications
+
+- **Un script plutôt qu'Ansible** : une seule exécution au premier démarrage suffit, puisque
+  l'instance est jetable (destroy/apply). Le script est un fichier du dépôt (relisible,
+  shellchecké), Terraform ne fait que le transmettre.
+- **Tout est épinglé et vérifié** : K3s (script d'installation du tag), Argo CD
+  (`install.yaml` du tag), SOPS (binaire) : version fixée + SHA-256 contrôlé. Une release
+  modifiée après coup fait échouer le bootstrap au lieu de s'exécuter.
+- **La clé age n'a pas besoin d'un droit KMS** : le SecureString est chiffré par la clé gérée
+  `aws/ssm`, dont la politique autorise déjà le déchiffrement via SSM.
+- **Les pods ne peuvent pas lire cette clé** : IMDSv2 avec hop limit 1 (voir étape 3). Seul
+  le processus de l'hôte obtient les identifiants du rôle.
+- **Les Secrets survivent aux arrêts/démarrages** (ils sont dans K3s, sur le disque chiffré) :
+  le script ne tourne qu'au premier démarrage, la clé n'est donc pas gardée sur l'instance.
+- **Mémoire** : K3s sans traefik, servicelb ni metrics-server ; Argo CD sans Dex ni
+  notifications (mis à l'échelle 0). Si le noeud manque de mémoire : `instance_type = "t3.medium"`.
+- **Stockage des Secrets dans K3s** : non chiffrés dans la base (disque EBS chiffré).
+  Acceptable pour ce périmètre ; le chiffrement au repos d'etcd serait une amélioration.
+
+### Validation
+
+Statique : shellcheck, `terraform fmt/validate`, Trivy. Le bootstrap lui-même n'est **pas**
+testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage réel est le test.
