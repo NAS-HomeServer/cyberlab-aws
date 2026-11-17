@@ -76,7 +76,7 @@ jobs:
 
       # Regles d'alerte evaluees par le Prometheus du NAS : syntaxe + tests unitaires (series synthetiques).
       - name: promtool (regles d'alerte du NAS)
-        run: nas-monitoring/check-rules.sh scripts/verify-rebuild.sh
+        run: nas-monitoring/check-rules.sh
 
   security:
     name: "② Security"
