@@ -465,3 +465,7 @@ testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage ré
   indéfiniment : le bootstrap restait bloqué à l'étape 7. Corrigé : la clé est passée par
   `--auth-key=file:...`, avec un délai de 120 s et un avertissement, pour qu'un échec Tailscale
   ne bloque plus jamais K3s, Argo CD ni les applications.
+- **Second bug au test suivant** : `tailscale status | head -5` avec `set -o pipefail` : `head` se
+  ferme après 5 lignes, `tailscale` reçoit un SIGPIPE et `set -e` arrêtait le script juste avant
+  l'étape des applications Argo CD. Corrigé en écrivant la sortie dans un fichier. Leçon : un
+  script de bootstrap n'est validé que par un vrai démarrage ; shellcheck ne détecte pas ce cas.
