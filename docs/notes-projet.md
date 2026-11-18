@@ -236,12 +236,14 @@ réel est le test.
 
 Mode d'emploi : [gitops.md](gitops.md).
 
-- **Trois `Application` Argo CD** (staging, production, supervision), sync automatique avec `prune` et
-  `selfHeal`, créées par le bootstrap avec l'URL et la branche de Terraform (`repo_url`, `repo_ref`).
+- **Trois `Application` Argo CD** (staging, production, supervision). Staging et supervision se
+  synchronisent automatiquement (`prune`, `selfHeal`) ; **la production se déploie sur validation humaine**
+  (clic sur « Sync » après la fusion de la PR), le bootstrap ne déclenchant que son premier déploiement.
+  Les applications sont créées par le bootstrap avec l'URL et la branche de Terraform (`repo_url`, `repo_ref`).
 - **Mise en production** : les digests de staging sont recopiés à la main vers production par une PR, relue et
   soumise aux 3 checks (dont la signature Cosign). La production ne reçoit jamais directement une image.
   La mise à jour du digest de staging se fait aussi par une PR manuelle.
-- **Rollback** : `git revert` de la fusion fautive ; Argo CD réapplique l'ancien digest. Seul le revert
+- **Rollback** : `git revert` de la fusion fautive ; Argo CD réapplique l'ancien digest (production : après « Sync »). Seul le revert
   laisse une trace durable.
 - **Pas d'app-of-apps** : trois `Application` suffisent et permettent de tester une branche
   (`repo_ref`) sans modifier les fichiers.
