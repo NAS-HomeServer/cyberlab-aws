@@ -1,4 +1,4 @@
-# Déploiement GitOps : Argo CD, promotion, rollback
+# Déploiement GitOps : Argo CD, mise en production, rollback
 
 **Principe : Git est la seule source de vérité.** Personne ne lance `kubectl apply` pour déployer : on fusionne une pull request, Argo CD voit le changement et l'applique au cluster.
 
@@ -27,15 +27,15 @@
 
 Les **secrets** ne passent pas par Argo CD : ils sont appliqués une fois par le bootstrap (`secrets.sh apply`). Argo CD ne les gère pas, donc `prune` ne peut pas les supprimer.
 
-## Promouvoir staging → production
+## Mettre en production (depuis staging)
 
 ```bash
 git switch main && git pull
-git switch -c promotion/<date>
+git switch -c mise-en-prod/<date>
 # recopier à la main les lignes « digest: sha256:… » de overlays/staging/kustomization.yaml
 # vers overlays/production/kustomization.yaml (mêmes images, mêmes digests)
 git diff k8s/cyberlab/overlays/production
-git commit -am "chore(production): promeut les images validées en staging"
+git commit -am "chore(production): met en production les images validées en staging"
 git push -u origin HEAD && gh pr create --base main
 ```
 
@@ -143,4 +143,4 @@ Ce qu'on montre : un changement se déploie en fusionnant une pull request, et s
 
 4. Rollback : annuler la fusion par Git, de la même façon (voir « Revenir en arrière » plus haut). Une fois la PR du revert fusionnée, le second pod disparaît.
 
-À dire : le déploiement et le retour en arrière sont des opérations Git, relues et tracées ; le cluster n'est jamais modifié à la main. La production suit le même chemin, par promotion des digests staging → production.
+À dire : le déploiement et le retour en arrière sont des opérations Git, relues et tracées ; le cluster n'est jamais modifié à la main. La production suit le même chemin, en recopiant les digests validés en staging vers production.
