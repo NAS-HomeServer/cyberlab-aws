@@ -66,3 +66,60 @@ ssh -i ~/.ssh/cyberlab-aws ubuntu@<ip> "sudo kubectl -n argocd get secret argocd
 ```
 
 État en ligne de commande : `sudo kubectl -n argocd get applications`.
+
+## Démonstration pour la soutenance : deux exemples
+
+Les deux exemples se font sur une instance démarrée et prennent environ 5 minutes. Ils montrent les deux propriétés du GitOps : **Git décide**, et **le cluster suit**. Avant de commencer, ouvrir l'interface Argo CD (voir ci-dessus) pour que le jury voie les ressources changer en direct, et se connecter à l'instance :
+
+```bash
+ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip)
+sudo kubectl -n argocd get applications     # les 3 applications doivent être Synced / Healthy
+```
+
+### Exemple 1 : le selfHeal, Argo CD annule une modification manuelle
+
+Ce qu'on montre : une modification faite à la main dans le cluster est aussitôt annulée, parce que l'état voulu est celui de Git.
+
+```bash
+# 1. État de départ : dns-analyzer a 1 réplica en staging
+sudo kubectl -n cyberlab-staging get deploy dns-analyzer
+
+# 2. On le met à 0 à la main : le service est « cassé »
+sudo kubectl -n cyberlab-staging scale deploy dns-analyzer --replicas=0
+
+# 3. Quelques secondes plus tard Argo CD l'a remis à 1 (Ctrl-C pour quitter)
+sudo kubectl -n cyberlab-staging get deploy dns-analyzer -w
+```
+
+À dire : Git ne contient qu'un réplica pour ce service ; Argo CD compare en permanence le cluster à Git (`selfHeal`) et rétablit l'état déclaré. Personne n'a lancé de commande de réparation.
+
+### Exemple 2 : un déploiement par Git, puis un rollback
+
+Ce qu'on montre : un changement se déploie en fusionnant une pull request, et se défait en la revertant. Personne ne touche au cluster. On passe `dns-analyzer` de 1 à 2 réplicas en staging.
+
+1. Dans `k8s/cyberlab/overlays/staging/kustomization.yaml`, ajouter à la fin du fichier (même syntaxe que l'overlay de production) :
+
+   ```yaml
+   replicas:
+     - name: dns-analyzer
+       count: 2
+   ```
+
+2. Ouvrir la pull request ; la CI passe ses trois contrôles ; la fusionner.
+
+   ```bash
+   git switch -c demo/replicas-staging
+   git commit -am "demo: 2 replicas de dns-analyzer en staging"
+   git push -u origin HEAD && gh pr create --base main
+   ```
+
+3. Sur l'instance, un second pod apparaît sans aucune commande de déploiement (Argo CD relit Git toutes les 3 minutes environ ; « Refresh » dans l'interface accélère) :
+
+   ```bash
+   sudo kubectl -n cyberlab-staging get pods -w
+   sudo kubectl -n argocd get applications      # cyberlab-staging : Synced / Healthy
+   ```
+
+4. Rollback : annuler la fusion par Git, de la même façon (voir « Revenir en arrière » plus haut). Une fois la PR du revert fusionnée, le second pod disparaît.
+
+À dire : le déploiement et le retour en arrière sont des opérations Git, relues et tracées ; le cluster n'est jamais modifié à la main. La production suit le même chemin, par promotion des digests staging → production.
