@@ -166,7 +166,7 @@ Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage
 | Déclencher une alerte pour la démonstration | [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) §5 |
 | Mettre à jour les images de staging | modifier le digest dans `k8s/cyberlab/overlays/staging/kustomization.yaml`, via une PR |
 | Reconstruire de zéro et vérifier | [docs/test-reconstruction.md](docs/test-reconstruction.md) |
-| Montrer Argo CD en soutenance (selfHeal, déploiement et rollback par Git) | [docs/gitops.md](docs/gitops.md), section « Démonstration pour la soutenance » |
+| Montrer Argo CD en soutenance (résilience d'un pod, selfHeal, déploiement et rollback par Git) | [docs/gitops.md](docs/gitops.md), section « Démonstration pour la soutenance » |
 
 ## Structure du dépôt
 

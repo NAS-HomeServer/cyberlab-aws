@@ -67,16 +67,35 @@ ssh -i ~/.ssh/cyberlab-aws ubuntu@<ip> "sudo kubectl -n argocd get secret argocd
 
 État en ligne de commande : `sudo kubectl -n argocd get applications`.
 
-## Démonstration pour la soutenance : deux exemples
+## Démonstration pour la soutenance : trois exemples
 
-Les deux exemples se font sur une instance démarrée et prennent environ 5 minutes. Ils montrent les deux propriétés du GitOps : **Git décide**, et **le cluster suit**. Avant de commencer, ouvrir l'interface Argo CD (voir ci-dessus) pour que le jury voie les ressources changer en direct, et se connecter à l'instance :
+Les trois exemples se font sur une instance démarrée et prennent environ 7 minutes. Le premier montre la résilience de Kubernetes ; les deux autres montrent les deux propriétés du GitOps : **Git décide**, et **le cluster suit**. Avant de commencer, ouvrir l'interface Argo CD (voir ci-dessus) pour que le jury voie les ressources changer en direct, et se connecter à l'instance :
 
 ```bash
 ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip)
 sudo kubectl -n argocd get applications     # les 3 applications doivent être Synced / Healthy
 ```
 
-### Exemple 1 : le selfHeal, Argo CD annule une modification manuelle
+### Exemple 1 : la résilience, un pod supprimé est recréé
+
+Ce qu'on montre : si un pod meurt, le service revient tout seul. Aucune ligne de commande n'est nécessaire, tout se fait dans l'interface Argo CD.
+
+1. Ouvrir l'application `cyberlab-production` : la chaîne Deployment → ReplicaSet → Pod est visible.
+2. Sur un pod `dns-analyzer` (2 réplicas en production), cliquer sur le menu `⋮` puis **Delete**, et confirmer.
+3. Le pod disparaît et un nouveau, au suffixe différent, apparaît en quelques secondes ; l'application reste `Synced` / `Healthy`.
+
+Variante en ligne de commande, sur l'instance :
+
+```bash
+sudo kubectl -n cyberlab-production get pods -w
+sudo kubectl -n cyberlab-production delete pod -l app.kubernetes.io/name=dns-analyzer --wait=false
+```
+
+À dire : **ce n'est pas Argo CD qui recrée le pod, c'est Kubernetes** : le ReplicaSet maintient le nombre de réplicas demandé (`replicas`). Argo CD, lui, garde le *Deployment* conforme à Git, ce que montre l'exemple suivant. Résilience des pods par Kubernetes, résilience de la configuration par Argo CD. Avec 2 réplicas, `dns-analyzer` reste disponible pendant la suppression ; les services à 1 réplica (sherlock par exemple) ont une brève coupure.
+
+Pour montrer aussi qu'Argo CD protège les objets eux-mêmes : `sudo kubectl -n cyberlab-staging delete deploy sherlock`. L'application passe `OutOfSync` puis Argo CD recrée le Deployment, son ReplicaSet et son pod.
+
+### Exemple 2 : le selfHeal, Argo CD annule une modification manuelle
 
 Ce qu'on montre : une modification faite à la main dans le cluster est aussitôt annulée, parce que l'état voulu est celui de Git.
 
@@ -93,7 +112,7 @@ sudo kubectl -n cyberlab-staging get deploy dns-analyzer -w
 
 À dire : Git ne contient qu'un réplica pour ce service ; Argo CD compare en permanence le cluster à Git (`selfHeal`) et rétablit l'état déclaré. Personne n'a lancé de commande de réparation.
 
-### Exemple 2 : un déploiement par Git, puis un rollback
+### Exemple 3 : un déploiement par Git, puis un rollback
 
 Ce qu'on montre : un changement se déploie en fusionnant une pull request, et se défait en la revertant. Personne ne touche au cluster. On passe `dns-analyzer` de 1 à 2 réplicas en staging.
 
