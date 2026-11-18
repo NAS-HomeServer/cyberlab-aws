@@ -53,23 +53,44 @@ git push -u origin HEAD               # via une PR, comme tout le reste
 
 Une fois la PR du revert fusionnée, Argo CD réapplique l'ancien digest. Pour aller vite pendant une démonstration, la même opération se fait en un clic dans l'interface (« Sync » sur un commit précédent), mais seul le `git revert` laisse une trace durable et reste la source de vérité.
 
-## Voir Argo CD
+## Se connecter à l'interface Argo CD
 
-L'interface n'est pas exposée sur Internet. Depuis le poste :
+L'interface n'est **pas exposée sur Internet** (aucun port entrant n'est ouvert) : on y accède par un tunnel SSH depuis le poste. Les commandes se lancent depuis la racine du dépôt, sur le poste qui a fait le `terraform apply`.
+
+### 1. Ouvrir le tunnel (premier terminal)
 
 ```bash
 ssh -i ~/.ssh/cyberlab-aws -L 8080:localhost:8080 ubuntu@$(terraform -chdir=terraform/main output -raw public_ip) \
   "sudo kubectl -n argocd port-forward svc/argocd-server 8080:443"
-# puis https://localhost:8080 (certificat auto-signé : l'accepter)
-# identifiant : admin ; mot de passe :
-ssh -i ~/.ssh/cyberlab-aws ubuntu@<ip> "sudo kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
 ```
 
-État en ligne de commande : `sudo kubectl -n argocd get applications`.
+Laisser ce terminal ouvert : le tunnel n'existe que tant que la commande tourne (`Ctrl-C` pour le fermer). Si le port 8080 est déjà pris sur le poste, remplacer le premier `8080` par un autre (`-L 8443:localhost:8080`) et utiliser ce port à l'étape suivante.
+
+### 2. Ouvrir l'interface
+
+Dans le navigateur : **https://localhost:8080**. Le certificat est auto-signé : le navigateur affiche un avertissement, l'accepter (« Avancé », puis « Continuer »).
+
+### 3. Se connecter (second terminal)
+
+- **Identifiant** : `admin`
+- **Mot de passe** : généré à chaque nouvelle instance, il change donc après un `destroy` puis `apply`. Le lire avec :
+
+```bash
+ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip) \
+  "sudo kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+```
+
+Le mot de passe s'affiche sans retour à la ligne, collé juste avant l'invite du terminal.
+
+### 4. Ce qu'on voit
+
+Les trois applications (`cyberlab-staging`, `cyberlab-production`, `monitoring`) en `Synced` et `Healthy`. Un clic sur une application ouvre l'arbre de ses ressources (Deployments, pods, Services). Le bouton **Refresh** force Argo CD à relire Git, utile pendant une démonstration.
+
+Sans interface, l'état se lit en ligne de commande, sur l'instance : `sudo kubectl -n argocd get applications`.
 
 ## Démonstration pour la soutenance : trois exemples
 
-Les trois exemples se font sur une instance démarrée et prennent environ 7 minutes. Le premier montre la résilience de Kubernetes ; les deux autres montrent les deux propriétés du GitOps : **Git décide**, et **le cluster suit**. Avant de commencer, ouvrir l'interface Argo CD (voir ci-dessus) pour que le jury voie les ressources changer en direct, et se connecter à l'instance :
+Les trois exemples se font sur une instance démarrée et prennent environ 7 minutes. Le premier montre la résilience de Kubernetes ; les deux autres montrent les deux propriétés du GitOps : **Git décide**, et **le cluster suit**. Avant de commencer, ouvrir l'interface Argo CD (voir « Se connecter à l'interface Argo CD ») pour que le jury voie les ressources changer en direct, et se connecter à l'instance :
 
 ```bash
 ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip)
