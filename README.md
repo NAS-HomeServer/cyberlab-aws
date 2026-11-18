@@ -15,7 +15,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 - **Terraform** crée l'instance EC2.
 - **cloud-init** y installe K3s et Argo CD, une seule fois, au premier démarrage.
 - **Argo CD** déploie tout depuis ce dépôt (GitOps).
-- La **promotion** de staging vers production se fait par pull request, le **rollback** par `git revert`.
+- La **mise en production** se fait par pull request, après validation en staging, le **rollback** par `git revert`.
 - Un **Prometheus Agent** envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
 
 > **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
@@ -39,7 +39,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 3. Déploiement automatique depuis Git (GitOps, Argo CD)
      ├─ 2 environnements : staging et production
      ├─ 3 backends + 3 tunnels cloudflared dans chacun
-     ├─ promotion staging → production par pull request
+     ├─ mise en production par pull request, après validation en staging
      └─ retour en arrière par « git revert »
 
 4. Supervision sur le NAS
@@ -102,7 +102,7 @@ Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_rele
 | Choix | Pourquoi |
 |---|---|
 | K3s sur une seule instance | cyberlab de petite taille, coût faible ; un EKS coûterait plus que tout le reste |
-| Argo CD + Kustomize | GitOps déclaratif : Git est la source de vérité, la promotion et le rollback sont des opérations Git |
+| Argo CD + Kustomize | GitOps déclaratif : Git est la source de vérité, la mise en production et le rollback sont des opérations Git |
 | Tunnels cloudflared | aucun port entrant à ouvrir, le trafic arrive par des connexions sortantes |
 | SOPS + age, clé dans SSM | aucun secret en clair dans le dépôt, la clé privée ne vit que dans le Parameter Store |
 | Images référencées par digest | une image ne peut pas changer sous nos pieds ; la CI vérifie leur signature Cosign |
@@ -160,7 +160,7 @@ Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage
 
 | Besoin | Commande / page |
 |---|---|
-| Promouvoir staging → production | recopier le digest dans l'overlay production, via une PR → [docs/gitops.md](docs/gitops.md) |
+| Mettre en production (depuis staging) | recopier le digest dans l'overlay production, via une PR → [docs/gitops.md](docs/gitops.md) |
 | Revenir en arrière | `git revert` du commit de fusion, via une PR → [docs/gitops.md](docs/gitops.md) |
 | Voir l'état du déploiement | `sudo kubectl -n argocd get applications` (sur l'instance), ou l'interface Argo CD par tunnel SSH |
 | Déclencher une alerte pour la démonstration | [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) §5 |
@@ -221,7 +221,7 @@ k8s/kind/test.sh --cleanup   # supprime le cluster de test
 ## Documentation
 
 - [docs/notes-projet.md](docs/notes-projet.md) : décisions, alternatives écartées, difficultés rencontrées
-- [docs/gitops.md](docs/gitops.md) : Argo CD, promotion, rollback
+- [docs/gitops.md](docs/gitops.md) : Argo CD, mise en production, rollback
 - [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`, et ce qui est contrôlé
 - [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) : Tailscale, récepteur Prometheus, règles, démonstration d'alerte
 - [terraform/README.md](terraform/README.md) : Terraform pas à pas

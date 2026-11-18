@@ -40,7 +40,7 @@ Conséquences :
 ### Décisions
 
 - **Un seul EC2, un seul cluster K3s, deux namespaces** (`cyberlab-staging`, `cyberlab-production`)
-  plutôt que deux instances : coût minimal, et ce qu'on démontre (Terraform, K8s, GitOps, promotion)
+  plutôt que deux instances : coût minimal, et ce qu'on démontre (Terraform, K8s, GitOps, mise en production par étapes)
   ne dépend pas du nombre de machines. Limite assumée : staging et production partagent le même point
   de défaillance. *Alternative écartée* : un cluster par environnement (plus propre, deux fois plus cher).
 - **Un seul Prometheus Agent** (namespace `monitoring`) : deux agents sur le même nœud dupliqueraient
@@ -52,8 +52,8 @@ Conséquences :
   L'overlay `kind` sert au test local (secrets factices, faux NAS), `staging` et `production` à AWS.
 - **Config de l'agent en deux fichiers** : `scrape.yml` (quoi collecter, commun) et `prometheus.yml`
   (où envoyer, quels labels : un par overlay), reliés par `scrape_config_files`.
-- **Images épinglées par digest** : backends via `images:`/`digest:` dans les overlays (pour promouvoir
-  staging → production), les autres directement dans les manifestes, suivies par Renovate.
+- **Images épinglées par digest** : backends via `images:`/`digest:` dans les overlays (pour recopier les mêmes digests
+  de staging vers production), les autres directement dans les manifestes, suivies par Renovate.
 - **Durcissement repris du compose** : `readOnlyRootFilesystem`, `capabilities.drop: [ALL]`,
   `allowPrivilegeEscalation: false`, `emptyDir` en mémoire pour `/tmp`, limites mémoire, probes
   (startup, readiness, liveness). Ajouts : `runAsNonRoot`, seccomp `RuntimeDefault`, jeton de
@@ -232,13 +232,13 @@ puis création des 3 `Application` Argo CD. Le script passe dans shellcheck en C
 Le bootstrap n'est **pas** testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage
 réel est le test.
 
-## Étape 6 — GitOps : Argo CD, promotion, rollback
+## Étape 6 — GitOps : Argo CD, mise en production, rollback
 
 Mode d'emploi : [gitops.md](gitops.md).
 
 - **Trois `Application` Argo CD** (staging, production, supervision), sync automatique avec `prune` et
   `selfHeal`, créées par le bootstrap avec l'URL et la branche de Terraform (`repo_url`, `repo_ref`).
-- **Promotion** : les digests de staging sont recopiés à la main vers production par une PR, relue et
+- **Mise en production** : les digests de staging sont recopiés à la main vers production par une PR, relue et
   soumise aux 3 checks (dont la signature Cosign). La production ne reçoit jamais directement une image.
   La mise à jour du digest de staging se fait aussi par une PR manuelle.
 - **Rollback** : `git revert` de la fusion fautive ; Argo CD réapplique l'ancien digest. Seul le revert
@@ -308,7 +308,7 @@ Instance neuve créée par un seul `terraform apply`, sans intervention ensuite 
 
 ### Reste à démontrer
 
-Promotion staging → production et `git revert`, rejoués sur AWS.
+Mise en production depuis staging et `git revert`, rejoués sur AWS.
 
 ## Réplicas : un seul partout, deux pour `dns-analyzer` en production
 
