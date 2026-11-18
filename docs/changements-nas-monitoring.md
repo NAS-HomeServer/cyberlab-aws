@@ -115,20 +115,17 @@ Si l'agent perd le NAS (coupure, redémarrage), il garde ses échantillons en m�
 
 ## 5. Démonstration : déclencher une alerte
 
-Argo CD **annule** toute modification manuelle (`selfHeal`) : si on met un backend à 0 replica, il le rétablit en quelques secondes et l'alerte n'a pas le temps d'apparaître. Pour la démo on suspend d'abord la synchronisation automatique de l'application :
+La production n'a pas de synchronisation automatique (voir [gitops.md](gitops.md)) : Argo CD n'annule donc pas une modification manuelle, il se contente de marquer l'application `OutOfSync`. Aucune suspension préalable n'est nécessaire :
 
 ```bash
-# Sur l'instance. 1) suspendre la synchro automatique de la production
-sudo kubectl -n argocd patch application cyberlab-production --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
-# 2) couper un backend
+# Sur l'instance : couper un backend
 sudo kubectl -n cyberlab-production scale deploy/sherlock --replicas=0
 ```
 
-Après environ 2 min 30 (`for: 2m` + délai de regroupement de l'Alertmanager), `AwsProductionWorkloadDown` apparaît dans Prometheus (*Alerts*) et sur Discord. Pour tout rétablir :
+Après environ 2 min 30 (`for: 2m` + délai de regroupement de l'Alertmanager), `AwsProductionWorkloadDown` apparaît dans Prometheus (*Alerts*) et sur Discord. Pour tout rétablir, cliquer sur **Sync** dans Argo CD, ou :
 
 ```bash
-sudo kubectl -n argocd patch application cyberlab-production --type merge \
-  -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+sudo kubectl -n argocd patch application cyberlab-production --type merge -p '{"operation":{"sync":{}}}'
 ```
 
 Argo CD ramène `sherlock` à 1 replica, l'alerte se résout (message « résolu » sur Discord). **Lance la coupure en début de démonstration**, pour que l'alerte soit visible quand tu y reviens.

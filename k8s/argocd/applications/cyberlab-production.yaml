@@ -1,6 +1,8 @@
 # Backends et tunnels de PRODUCTION. Les digests viennent de staging après validation en staging (PR qui recopie le digest de staging), jamais directement.
-# Argo CD surveille le dossier `path` de ce depot : tout changement fusionne sur la
-# branche suivie est applique au cluster (sync automatique). Un git revert le defait.
+# Argo CD surveille le dossier `path` de ce depot, mais la PRODUCTION se deploie sur
+# validation humaine : apres la fusion, l'application passe OutOfSync et attend un clic sur
+# « Sync » (ou `argocd app sync`). Un git revert se deploie de la meme facon.
+# Seul le premier deploiement est declenche par scripts/bootstrap-node.sh.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,11 +21,6 @@ spec:
     server: https://kubernetes.default.svc
     namespace: cyberlab-production
   syncPolicy:
-    automated:
-      # prune : une ressource retiree de Git est supprimee du cluster.
-      # selfHeal : une modification faite a la main dans le cluster est annulee.
-      prune: true
-      selfHeal: true
     retry:
       limit: 5
       backoff:

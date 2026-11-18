@@ -15,7 +15,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 - **Terraform** crée l'instance EC2.
 - **cloud-init** y installe K3s et Argo CD, une seule fois, au premier démarrage.
 - **Argo CD** déploie tout depuis ce dépôt (GitOps).
-- La **mise en production** se fait par pull request, après validation en staging, le **rollback** par `git revert`.
+- La **mise en production** se fait par pull request, après validation en staging, puis un clic sur « Sync » dans Argo CD ; le **rollback** par `git revert`.
 - Un **Prometheus Agent** envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
 
 > **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
@@ -39,7 +39,8 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 3. Déploiement automatique depuis Git (GitOps, Argo CD)
      ├─ 2 environnements : staging et production
      ├─ 3 backends + 3 tunnels cloudflared dans chacun
-     ├─ mise en production par pull request, après validation en staging
+     ├─ mise en production par pull request, après validation en staging,
+     │  puis validation humaine (clic sur « Sync » dans Argo CD)
      └─ retour en arrière par « git revert »
 
 4. Supervision sur le NAS
@@ -160,7 +161,7 @@ Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage
 
 | Besoin | Commande / page |
 |---|---|
-| Mettre en production (depuis staging) | recopier le digest dans l'overlay production, via une PR → [docs/gitops.md](docs/gitops.md) |
+| Mettre en production (depuis staging) | recopier le digest dans l'overlay production, via une PR, puis « Sync » dans Argo CD → [docs/gitops.md](docs/gitops.md) |
 | Revenir en arrière | `git revert` du commit de fusion, via une PR → [docs/gitops.md](docs/gitops.md) |
 | Voir l'état du déploiement | `sudo kubectl -n argocd get applications` (sur l'instance), ou l'interface Argo CD par tunnel SSH |
 | Déclencher une alerte pour la démonstration | [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) §5 |
