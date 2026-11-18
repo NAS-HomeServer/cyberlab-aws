@@ -14,6 +14,9 @@
         ▼
  PR : on recopie les mêmes digests dans PRODUCTION → CI → fusion
         │
+        ▼  l'application passe OutOfSync : rien n'est déployé
+ VALIDATION HUMAINE : clic sur « Sync » dans Argo CD
+        │
         ▼
  Argo CD : application cyberlab-production → namespace cyberlab-production
 ```
@@ -22,8 +25,8 @@
 
 | Élément | Rôle |
 |---|---|
-| `k8s/argocd/applications/*.yaml` | Une `Application` par cible : `cyberlab-staging`, `cyberlab-production`, `monitoring`. Elles surveillent un dossier de ce dépôt et appliquent son contenu (`prune` et `selfHeal` activés). |
-| `scripts/bootstrap-node.sh` | Étape 7 : crée ces `Application` au premier démarrage de l'instance, avec l'URL et la branche choisies dans Terraform (`repo_url`, `repo_ref`). |
+| `k8s/argocd/applications/*.yaml` | Une `Application` par cible : `cyberlab-staging`, `cyberlab-production`, `monitoring`. Elles surveillent un dossier de ce dépôt. `cyberlab-staging` et `monitoring` appliquent son contenu automatiquement (`prune` et `selfHeal` activés) ; **`cyberlab-production` n'a pas de synchronisation automatique** : chaque changement attend un clic sur « Sync ». |
+| `scripts/bootstrap-node.sh` | Étape 8 : crée ces `Application` au premier démarrage de l'instance, déclenche le premier déploiement de la production, avec l'URL et la branche choisies dans Terraform (`repo_url`, `repo_ref`). |
 
 Les **secrets** ne passent pas par Argo CD : ils sont appliqués une fois par le bootstrap (`secrets.sh apply`). Argo CD ne les gère pas, donc `prune` ne peut pas les supprimer.
 
@@ -39,7 +42,12 @@ git commit -am "chore(production): met en production les images validées en sta
 git push -u origin HEAD && gh pr create --base main
 ```
 
-Quand la PR est fusionnée (après les 3 checks), Argo CD déploie en production en quelques minutes. Les mises à jour des pods se font sans coupure (`maxUnavailable: 0`).
+Quand la PR est fusionnée (après les 3 checks), **rien ne change encore en production** : `cyberlab-production` passe `OutOfSync` (jaune). C'est la validation humaine :
+
+- dans l'interface Argo CD : bouton **Refresh** puis **Sync** sur `cyberlab-production` (cocher *Prune* si des ressources ont été retirées) ;
+- ou sur l'instance : `sudo kubectl -n argocd patch application cyberlab-production --type merge -p '{"operation":{"sync":{"prune":true}}}'`.
+
+Les mises à jour des pods se font sans coupure (`maxUnavailable: 0`).
 
 ## Revenir en arrière (rollback)
 
@@ -51,7 +59,7 @@ git revert -m 1 <commit de fusion de la PR fautive>
 git push -u origin HEAD               # via une PR, comme tout le reste
 ```
 
-Une fois la PR du revert fusionnée, Argo CD réapplique l'ancien digest. Pour aller vite pendant une démonstration, la même opération se fait en un clic dans l'interface (« Sync » sur un commit précédent), mais seul le `git revert` laisse une trace durable et reste la source de vérité.
+Une fois la PR du revert fusionnée, Argo CD réapplique l'ancien digest (staging aussitôt ; production après un clic sur « Sync », comme pour toute mise en production). Pour aller vite pendant une démonstration, la même opération se fait en un clic dans l'interface (« Sync » sur un commit précédent), mais seul le `git revert` laisse une trace durable et reste la source de vérité.
 
 ## Se connecter à l'interface Argo CD
 

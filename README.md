@@ -15,7 +15,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 - **Terraform** crée l'instance EC2.
 - **cloud-init** y installe K3s et Argo CD, une seule fois, au premier démarrage.
 - **Argo CD** déploie tout depuis ce dépôt (GitOps).
-- La **mise en production** se fait par pull request, après validation en staging, le **rollback** par `git revert`.
+- La **mise en production** se fait par pull request, après validation en staging, puis un clic sur « Sync » dans Argo CD ; le **rollback** par `git revert`.
 - Un **Prometheus Agent** envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
 
 > **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
@@ -36,10 +36,11 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
      ├─ un script de démarrage (cloud-init) installe K3s, Argo CD et Tailscale
      └─ aucun geste manuel : un seul « terraform apply » suffit
 
-3. Déploiement automatique depuis Git (GitOps, Argo CD)
+3. Déploiement depuis Git (GitOps, Argo CD) : automatique en staging, validé à la main en production
      ├─ 2 environnements : staging et production
      ├─ 3 backends + 3 tunnels cloudflared dans chacun
-     ├─ mise en production par pull request, après validation en staging
+     ├─ mise en production par pull request, après validation en staging,
+     │  puis validation humaine (clic sur « Sync » dans Argo CD)
      └─ retour en arrière par « git revert »
 
 4. Supervision sur le NAS
@@ -83,7 +84,7 @@ Résultat mesuré le 17/11/2026 : une instance neuve est entièrement installée
                      NAS : Prometheus ─▶ règles d'alerte ─▶ Alertmanager ─▶ Discord
 ```
 
-Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit le changement → il l'applique au cluster. Personne ne lance `kubectl apply`. Détails : [docs/gitops.md](docs/gitops.md).
+Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit le changement → il l'applique au cluster tout seul en staging ; en production, l'application passe `OutOfSync` et attend un clic sur « Sync » (validation humaine). Personne ne lance `kubectl apply`. Détails : [docs/gitops.md](docs/gitops.md).
 
 ### Qui installe quoi
 
@@ -93,7 +94,7 @@ Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit l
 |---|---|---|
 | EC2, réseau, IAM, budget | **Terraform** (`terraform/main`) | `terraform apply`, à la main |
 | K3s, Argo CD, secrets, Tailscale | **`scripts/bootstrap-node.sh`** (cloud-init) | une seule fois, au premier démarrage |
-| Backends, tunnels, supervision (les 12 pods) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` |
+| Backends, tunnels, supervision (les 12 pods) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` (staging, supervision) ; production après un clic sur « Sync » |
 
 Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_release`) : il fournit le script via `user_data`, et c'est l'instance qui s'installe elle-même. La CI ne lance ni `plan` ni `apply` : elle valide (`fmt`, `validate`, Trivy) et teste les manifestes sur un cluster jetable. Le « CD » est assuré par Argo CD en mode GitOps, c'est lui qui tire depuis Git.
 
@@ -102,7 +103,7 @@ Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_rele
 | Choix | Pourquoi |
 |---|---|
 | K3s sur une seule instance | cyberlab de petite taille, coût faible ; un EKS coûterait plus que tout le reste |
-| Argo CD + Kustomize | GitOps déclaratif : Git est la source de vérité, la mise en production et le rollback sont des opérations Git |
+| Argo CD + Kustomize | GitOps déclaratif : Git est la source de vérité, la mise en production et le rollback sont des opérations Git, validées par un « Sync » pour la production |
 | Tunnels cloudflared | aucun port entrant à ouvrir, le trafic arrive par des connexions sortantes |
 | SOPS + age, clé dans SSM | aucun secret en clair dans le dépôt, la clé privée ne vit que dans le Parameter Store |
 | Images référencées par digest | une image ne peut pas changer sous nos pieds ; la CI vérifie leur signature Cosign |
@@ -160,13 +161,13 @@ Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage
 
 | Besoin | Commande / page |
 |---|---|
-| Mettre en production (depuis staging) | recopier le digest dans l'overlay production, via une PR → [docs/gitops.md](docs/gitops.md) |
+| Mettre en production (depuis staging) | recopier le digest dans l'overlay production, via une PR, puis « Sync » dans Argo CD → [docs/gitops.md](docs/gitops.md) |
 | Revenir en arrière | `git revert` du commit de fusion, via une PR → [docs/gitops.md](docs/gitops.md) |
 | Voir l'état du déploiement | `sudo kubectl -n argocd get applications` (sur l'instance), ou l'interface Argo CD par tunnel SSH |
 | Déclencher une alerte pour la démonstration | [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) §5 |
 | Mettre à jour les images de staging | modifier le digest dans `k8s/cyberlab/overlays/staging/kustomization.yaml`, via une PR |
 | Reconstruire de zéro et vérifier | [docs/test-reconstruction.md](docs/test-reconstruction.md) |
-| Montrer Argo CD en soutenance (résilience d'un pod, selfHeal, déploiement et rollback par Git) | [docs/gitops.md](docs/gitops.md), section « Démonstration pour la soutenance » |
+| Montrer Argo CD en soutenance (résilience d'un pod, selfHeal en staging, déploiement et rollback par Git) | [docs/gitops.md](docs/gitops.md), section « Démonstration pour la soutenance » |
 
 ## Structure du dépôt
 
