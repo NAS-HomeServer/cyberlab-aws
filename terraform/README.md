@@ -39,11 +39,11 @@ Ce paramètre n'est pas détruit par `terraform destroy` (il n'est pas géré pa
 
 ## 3. Clé Tailscale (lien privé vers le NAS, une seule fois)
 
-Même principe que la clé age : un paramètre SSM, créé à la main, lu par l'instance au premier démarrage. La création de la clé et les règles ACL sont décrites dans [docs/changements-nas-monitoring.md](../docs/changements-nas-monitoring.md) (§1). Sans ce paramètre l'instance démarre normalement, mais la supervision ne remonte pas au NAS (un avertissement apparaît dans le journal de bootstrap).
+Même principe que la clé age : un paramètre SSM, créé à la main, lu par l'instance au premier démarrage. La création de la clé et les règles ACL sont décrites dans [docs/changements-nas-monitoring.md](../docs/changements-nas-monitoring.md) (§1). Sans ce paramètre l'instance démarre normalement, mais la supervision ne remonte pas au NAS (un avertissement apparaît dans le journal du script de démarrage).
 
 ## 4. Ce que fait l'instance au premier démarrage
 
-`scripts/bootstrap-node.sh` (cloud-init, environ 3 minutes mesurées), journal dans `/var/log/cyberlab-bootstrap.log` :
+Le script de démarrage `scripts/bootstrap-node.sh` (exécuté par cloud-init, environ 3 minutes mesurées), journal dans `/var/log/cyberlab-bootstrap.log` :
 
 1. paquets de base, AWS CLI ;
 2. SOPS ;
