@@ -32,6 +32,10 @@ Les fichiers chiffrés sont dans `secrets/staging/` et `secrets/production/` (5 
 
 Résultat : `terraform apply` reconstruit tout sans que personne ne retape un secret.
 
+**En une phrase** : la clé age est la clé privée qui permet de déchiffrer les secrets SOPS ; elle est stockée à la main dans AWS SSM, et l'instance EC2 la lit au démarrage (grâce à son ARN dans la politique IAM) pour les ouvrir dans le cluster.
+
+**L'autorisation, côté Terraform** : la politique IAM `age_key` ([terraform/main/iam.tf](../terraform/main/iam.tf)) donne au rôle de l'instance le droit de lire **uniquement** le paramètre `arn:aws:ssm:<région>:<compte>:parameter/cyberlab-aws/age-key`. Terraform crée cette permission, mais ne manipule jamais la clé elle-même.
+
 ## Où vit chaque secret
 
 En bref : les secrets applicatifs sont dans Git **chiffrés** ; la clé privée age et la clé Tailscale sont dans AWS SSM (créées à la main, hors Terraform) ; la clé AWS reste sur le poste ; le kubeconfig reste sur l'instance. Le rôle IAM de l'instance ne lit **que ces deux paramètres SSM**.
