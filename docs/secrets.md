@@ -44,6 +44,18 @@ Résultat : `terraform apply` reconstruit tout sans que personne ne retape un se
 
 Le rôle IAM de l'instance n'a le droit de lire **que ces deux paramètres SSM**.
 
+## Pourquoi le kubeconfig n'est pas dans les paramètres Git
+
+Beaucoup de cours le stockent dans les secrets de la CI (GitHub/GitLab) pour que la CI déploie. C'est une mauvaise pratique, et ce projet l'évite :
+
+- **Droits trop larges** : c'est un identifiant d'admin du cluster, sans expiration. Qui le lit contrôle tout.
+- **Surface d'attaque** : la CI devrait joindre l'API Kubernetes (6443), donc il faudrait l'ouvrir sur Internet.
+- **Fuite facile** : logs, PR de forks, workflow modifié, action tierce compromise. La CI devient une porte d'entrée vers le cluster.
+
+Ici, le modèle est *pull* : le kubeconfig reste sur l'instance (`/etc/rancher/k3s/k3s.yaml`), le port 6443 est fermé, et Argo CD tire depuis Git. Personne ne pousse vers le cluster, donc il n'y a rien à stocker côté Git.
+
+Si la CI devait un jour parler au cluster : un ServiceAccount aux droits minimaux, un token à durée courte (ou OIDC), et un accès privé (Tailscale), jamais le kubeconfig admin.
+
 ## Ce qu'il faut savoir
 
 - **Argo CD ne gère pas les secrets** : le script de démarrage les applique une fois. Modifier un secret demande donc `scripts/secrets.sh apply`, pas seulement un `git push`.
