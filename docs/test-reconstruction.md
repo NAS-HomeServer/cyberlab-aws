@@ -44,7 +44,7 @@ Se connecter à l'instance et regarder trois choses :
 ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip)
 
 sudo tail -5 /var/log/cyberlab-bootstrap.log     # « Bootstrap termine. »
-sudo kubectl -n argocd get applications          # cyberlab-staging, cyberlab-production, monitoring : Synced / Healthy
+sudo kubectl -n argocd get applications          # staging et monitoring : Synced / Healthy ; cyberlab-production : OutOfSync jusqu au clic « Sync »
 sudo kubectl get pods -A                         # backends et tunnels : Running
 ```
 
