@@ -12,8 +12,8 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 
 **Comment ça marche**
 
-- **Terraform** crée l'instance EC2.
-- **cloud-init** y installe K3s et Argo CD, une seule fois, au premier démarrage.
+- **Terraform** crée l'instance EC2 et lui remet un script de démarrage (`scripts/bootstrap-node.sh`).
+- **cloud-init** (déjà présent dans l'image Ubuntu) exécute ce script une seule fois, au premier démarrage : c'est lui qui installe K3s et Argo CD.
 - **Argo CD** déploie tout depuis ce dépôt (GitOps).
 - La **mise en production** se fait par pull request, après validation en staging, puis un clic sur « Sync » dans Argo CD ; le **rollback** par `git revert`.
 - Un **Prometheus Agent** envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
