@@ -6,7 +6,7 @@ Détails complémentaires : [gitops.md](gitops.md) (Argo CD, mise en production,
 
 ## Quel Kubernetes
 
-**K3s** : une version légère de Kubernetes, **un seul nœud** (l'instance EC2), installée par le bootstrap, sans `traefik` ni `servicelb` (pas d'entrée publique). **Argo CD** y est installé pour appliquer les manifestes depuis Git. Personne ne lance `kubectl apply` pour déployer.
+**K3s** : une version légère de Kubernetes, **un seul nœud** (l'instance EC2), installée par le script de démarrage (cloud-init), sans `traefik` ni `servicelb` (pas d'entrée publique). **Argo CD** y est installé pour appliquer les manifestes depuis Git. Personne ne lance `kubectl apply` pour déployer.
 
 ## Où sont les manifestes
 
@@ -97,7 +97,7 @@ Les images sont référencées par **digest** (empreinte immuable), pas par un t
 
 ## Les secrets
 
-Les manifestes ne contiennent **aucun secret en clair**. Les secrets sont dans `secrets/<env>/*.sops.yaml`, **chiffrés** avec SOPS + age (valeurs illisibles, noms lisibles). Ils ne passent pas par Argo CD : le bootstrap les applique une fois (`scripts/secrets.sh apply`) avec la clé age lue dans SSM, puis efface la clé du disque.
+Les manifestes ne contiennent **aucun secret en clair**. Les secrets sont dans `secrets/<env>/*.sops.yaml`, **chiffrés** avec SOPS + age (valeurs illisibles, noms lisibles). Ils ne passent pas par Argo CD : le script de démarrage les applique une fois (`scripts/secrets.sh apply`) avec la clé age lue dans SSM, puis efface la clé du disque.
 
 ## Voir les manifestes tels que le cluster les reçoit
 
