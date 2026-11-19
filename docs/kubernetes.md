@@ -40,7 +40,7 @@ k8s/
 
 ## Les manifestes : ce qu'il faut retenir
 
-**Base** : 3 backends (`sherlock`, `dns-analyzer`, `audit-orchestrator`), chacun avec son tunnel `cloudflared`. Soit **6 pods par environnement**.
+**Base** : 3 backends (`sherlock`, `dns-analyzer`, `audit-orchestrator`), chacun avec son tunnel `cloudflared`. Soit **6 Deployments par environnement** (7 pods en production, où `dns-analyzer` a 2 réplicas).
 
 Chaque backend est durci : pas de root (`runAsNonRoot`), système de fichiers en lecture seule, toutes les *capabilities* retirées, profil seccomp `RuntimeDefault`, pas de jeton d'API Kubernetes monté, sondes `startup`/`readiness`/`liveness` sur `/health`, mises à jour sans coupure (`maxUnavailable: 0`).
 
@@ -57,7 +57,7 @@ Chaque backend est durci : pas de root (`runAsNonRoot`), système de fichiers en
 - **Pannes indépendantes.** Un tunnel qui tombe ne coupe que son service ; sa sonde `/ready` le redémarre seul, et son `/metrics` le supervise séparément.
 - **Un point d'entrée par service** côté Cloudflare (un nom de domaine par backend).
 
-**Ce que ça coûte** : 3 pods supplémentaires par environnement (12 pods applicatifs au total avec staging et production), l'une des raisons du choix d'une `t3.medium`.
+**Ce que ça coûte** : 3 pods supplémentaires par environnement (13 pods applicatifs au total : 6 en staging, 7 en production), l'une des raisons du choix d'une `t3.medium`.
 
 **Un jeu de tunnels par environnement**, avec de nouveaux tokens : réutiliser ceux du NAS répartirait le trafic réel entre le NAS et AWS. La supervision vers le NAS, elle, passe par Tailscale, pas par un tunnel.
 
