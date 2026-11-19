@@ -1,5 +1,7 @@
 # Terraform
 
+> Vue d'ensemble, state et aide-mémoire : [docs/terraform.md](../docs/terraform.md). Côté Kubernetes : [docs/kubernetes.md](../docs/kubernetes.md).
+
 Un seul module, `main/` : VPC, sous-réseau public, groupe de sécurité, instance EC2 (Ubuntu 24.04), rôle IAM, IP élastique, budget. Il se détruit et se recrée à volonté.
 
 **État local** : Terraform garde la correspondance code ↔ ressources AWS dans `main/terraform.tfstate` (ignoré par git, il peut contenir des données sensibles). Ce fichier survit à `terraform destroy`, ce qui permet de reconstruire. À conserver sur le poste : sans lui, Terraform ne retrouve plus ce qu'il a créé.
@@ -52,7 +54,7 @@ Même principe que la clé age : un paramètre SSM, créé à la main, lu par l'
 7. Tailscale (version et empreinte épinglées) : l'instance rejoint le tailnet avec le tag `tag:cyberlab-aws` ;
 8. création des `Application` Argo CD (`k8s/argocd/applications/`) : les backends, les tunnels et la supervision se déploient ensuite depuis Git (voir [docs/gitops.md](../docs/gitops.md)).
 
-**Mémoire** : K3s, Argo CD, les 12 pods applicatifs et la supervision ne tiennent pas dans les 2 Go d'une `t3.small` (il restait ~750 Mo avec Argo CD seul) : le défaut est donc `t3.medium` (4 Go).
+**Mémoire** : K3s, Argo CD, les 13 pods applicatifs (production : `dns-analyzer` en 2 réplicas) et la supervision ne tiennent pas dans les 2 Go d'une `t3.small` (il restait ~750 Mo avec Argo CD seul) : le défaut est donc `t3.medium` (4 Go).
 
 Chaque téléchargement est épinglé par version **et** par empreinte SHA-256. Pour tester une branche avant fusion : `repo_ref = "ma-branche"` dans `terraform.tfvars`.
 

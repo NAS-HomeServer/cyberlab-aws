@@ -94,7 +94,7 @@ Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit l
 |---|---|---|
 | EC2, réseau, IAM, budget | **Terraform** (`terraform/main`) | `terraform apply`, à la main |
 | K3s, Argo CD, secrets, Tailscale | **`scripts/bootstrap-node.sh`** (cloud-init) | une seule fois, au premier démarrage |
-| Backends, tunnels, supervision (les 12 pods) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` (staging, supervision) ; production après un clic sur « Sync » |
+| Backends, tunnels, supervision (les 13 pods applicatifs) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` (staging, supervision) ; production après un clic sur « Sync » |
 
 Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_release`) : il fournit le script via `user_data`, et c'est l'instance qui s'installe elle-même. La CI ne lance ni `plan` ni `apply` : elle valide (`fmt`, `validate`, Trivy) et teste les manifestes sur un cluster jetable. Le « CD » est assuré par Argo CD en mode GitOps, c'est lui qui tire depuis Git.
 
@@ -185,7 +185,7 @@ scripts/
 nas-monitoring/                                          # règles d'alerte pour le Prometheus du NAS
 ci/                                                      # scripts de la CI (rendu, signatures Cosign, secrets chiffrés)
 .github/workflows/                                       # ci.yml (pipeline)
-docs/                                                    # gitops, test de reconstruction, supervision NAS, notes de projet
+docs/                                                    # terraform, kubernetes, gitops, test de reconstruction, supervision NAS, notes de projet
 ```
 
 Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers temporaires dans `/tmp`) : aucun volume n'est nécessaire.
@@ -221,6 +221,8 @@ k8s/kind/test.sh --cleanup   # supprime le cluster de test
 
 ## Documentation
 
+- [docs/terraform.md](docs/terraform.md) : ce que Terraform crée, où est le state, comment le lire
+- [docs/kubernetes.md](docs/kubernetes.md) : où sont les manifestes, overlays, tunnels, NetworkPolicies, du Git au cluster
 - [docs/notes-projet.md](docs/notes-projet.md) : décisions, alternatives écartées, difficultés rencontrées
 - [docs/gitops.md](docs/gitops.md) : Argo CD, mise en production, rollback
 - [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`, et ce qui est contrôlé
