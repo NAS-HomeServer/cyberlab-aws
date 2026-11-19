@@ -14,9 +14,9 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
 
 - **Terraform** crée l'instance EC2 et lui remet un script de démarrage (`scripts/bootstrap-node.sh`).
 - **cloud-init** (déjà présent dans l'image Ubuntu) exécute ce script une seule fois, au premier démarrage : c'est lui qui installe K3s et Argo CD.
-- **Argo CD** déploie tout depuis ce dépôt (GitOps).
+- Le même script crée 3 `Application` Argo CD (`k8s/argocd/applications/` : `cyberlab-staging`, `cyberlab-production`, `monitoring`). Chacune pointe vers un dossier de `k8s/` : **Argo CD déploie ce dossier** depuis ce dépôt (GitOps). Un dossier de `k8s/` n'est déployé que s'il existe une `Application` qui le référence.
 - La **mise en production** se fait par pull request, après validation en staging, puis un clic sur « Sync » dans Argo CD ; le **rollback** par `git revert`.
-- Un **Prometheus Agent** envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
+- Un **Prometheus Agent**, déployé par Argo CD (application `monitoring`, dossier `k8s/monitoring/overlays/aws`), envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
 
 > **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
 
@@ -44,7 +44,7 @@ Migration du **cyberlab** d'un NAS Synology vers **AWS**.
      └─ retour en arrière par « git revert »
 
 4. Supervision sur le NAS
-     ├─ un Prometheus Agent envoie les métriques au Prometheus du NAS (Tailscale)
+     ├─ un Prometheus Agent, déployé par Argo CD (application « monitoring »), envoie les métriques au Prometheus du NAS (Tailscale)
      └─ des alertes préviennent sur Discord
 
 5. Sécurité
@@ -95,6 +95,8 @@ Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit l
 | EC2, réseau, IAM, budget | **Terraform** (`terraform/main`) | `terraform apply`, à la main |
 | K3s, Argo CD, secrets, Tailscale | **`scripts/bootstrap-node.sh`** (cloud-init) | une seule fois, au premier démarrage |
 | Backends, tunnels, supervision (les 13 pods applicatifs) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` (staging, supervision) ; production après un clic sur « Sync » |
+
+**Exemple : le Prometheus Agent.** Le dossier `k8s/monitoring/` ne s'installe pas seul. Le script de démarrage applique `k8s/argocd/applications/monitoring.yaml` (étape 8/8, un `kubectl apply` par `Application`) ; cette `Application` désigne `k8s/monitoring/overlays/aws` et un namespace `monitoring` ; Argo CD y crée alors le Prometheus Agent, `node-exporter` et `kube-state-metrics`, avec synchronisation automatique. C'est le seul `kubectl apply` du projet : il n'applique que ces 3 fichiers `Application`.
 
 Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_release`) : il fournit le script via `user_data`, et c'est l'instance qui s'installe elle-même. La CI ne lance ni `plan` ni `apply` : elle valide (`fmt`, `validate`, Trivy) et teste les manifestes sur un cluster jetable. Le « CD » est assuré par Argo CD en mode GitOps, c'est lui qui tire depuis Git.
 
