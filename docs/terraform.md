@@ -9,7 +9,7 @@ Détails complémentaires : [terraform/README.md](../terraform/README.md) (mode 
 ```
  terraform apply          crée sur AWS :  1 VPC + 1 instance EC2 (Ubuntu) + IP élastique + IAM + budget
         │
-        ▼  cloud-init lance scripts/bootstrap-node.sh au premier démarrage
+        ▼  cloud-init lance le script de démarrage (scripts/bootstrap-node.sh)
  instance EC2             installe : K3s (Kubernetes léger) → Argo CD → secrets → Tailscale
         │
         ▼
@@ -17,6 +17,9 @@ Détails complémentaires : [terraform/README.md](../terraform/README.md) (mode 
 ```
 
 Règle de base : **Terraform construit la machine, Git décrit ce qui tourne dessus.**
+
+> **Terraform crée la machine et lui remet un script ; Ubuntu, grâce à cloud-init, l'exécute tout seul au premier démarrage.**
+> Cloud-init est un outil déjà présent dans l'image Ubuntu d'AWS : il lit le script (le `user_data` de l'instance) et l'exécute une seule fois, en root. Personne ne le lance à la main. Le script lui-même est `scripts/bootstrap-node.sh` ; son journal est `/var/log/cyberlab-bootstrap.log`.
 
 ## Où est le code
 
@@ -28,7 +31,7 @@ Un seul module : [terraform/main/](../terraform/main/). Chaque fichier a un rôl
 | [variables.tf](../terraform/main/variables.tf) | Les réglages : région, type d'instance, clé SSH, IP autorisées, budget, dépôt Git à cloner |
 | [network.tf](../terraform/main/network.tf) | VPC `10.20.0.0/16`, passerelle Internet, 1 sous-réseau public, table de routage. **Pas de NAT Gateway** (≈ 35 $/mois) |
 | [security.tf](../terraform/main/security.tf) | Groupe de sécurité : **aucune entrée** sauf SSH depuis `ssh_allowed_cidrs` ; toutes les sorties ouvertes |
-| [compute.tf](../terraform/main/compute.tf) | Instance EC2 `t3.medium`, disque gp3 20 Go chiffré, clé SSH, IP élastique, script de bootstrap (`user_data`) |
+| [compute.tf](../terraform/main/compute.tf) | Instance EC2 `t3.medium`, disque gp3 20 Go chiffré, clé SSH, IP élastique, script de démarrage (`user_data`) |
 | [iam.tf](../terraform/main/iam.tf) | Rôle IAM de l'instance : Systems Manager + lecture de 2 paramètres SSM seulement |
 | [budget.tf](../terraform/main/budget.tf) | Alerte e-mail à 80 % (réel) et 100 % (prévu) du budget mensuel |
 | [outputs.tf](../terraform/main/outputs.tf) | Valeurs affichées après `apply` : `instance_id`, `public_ip`, `ssh_user`, `region` |
@@ -93,8 +96,8 @@ Deux paramètres **AWS Systems Manager** (SecureString), créés à la main, une
 
 | Paramètre | Contenu | Lu par |
 |---|---|---|
-| `/cyberlab-aws/age-key` | clé privée age (déchiffre les secrets SOPS) | le bootstrap de l'instance |
-| `/cyberlab-aws/tailscale-authkey` | clé Tailscale (lien privé vers le NAS) | le bootstrap de l'instance |
+| `/cyberlab-aws/age-key` | clé privée age (déchiffre les secrets SOPS) | le script de démarrage de l'instance |
+| `/cyberlab-aws/tailscale-authkey` | clé Tailscale (lien privé vers le NAS) | le script de démarrage de l'instance |
 
 Le rôle IAM n'a le droit de lire **que ces deux paramètres**.
 
@@ -109,7 +112,7 @@ terraform output public_ip     # IP à utiliser pour SSH
 terraform destroy              # supprime tout (le state est conservé, vidé)
 ```
 
-Points à savoir : `user_data_replace_on_change = true` (modifier `scripts/bootstrap-node.sh` ou ses paramètres **recrée** l'instance : l'état voulu est toujours celui du dépôt) et `ignore_changes = [ami]` (une nouvelle image Ubuntu ne remplace pas l'instance existante).
+Points à savoir : `user_data_replace_on_change = true` (modifier le script de démarrage (`scripts/bootstrap-node.sh`) ou ses paramètres **recrée** l'instance : l'état voulu est toujours celui du dépôt) et `ignore_changes = [ami]` (une nouvelle image Ubuntu ne remplace pas l'instance existante).
 
 ## Aide-mémoire
 
