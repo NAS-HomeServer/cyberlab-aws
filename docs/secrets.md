@@ -34,15 +34,9 @@ Résultat : `terraform apply` reconstruit tout sans que personne ne retape un se
 
 ## Où vit chaque secret
 
-| Secret | Où | Protection |
-|---|---|---|
-| Secrets applicatifs (tokens, `.env`) | Git, **chiffrés** | la CI refuse tout fichier en clair |
-| Clé privée age | AWS SSM Parameter Store (SecureString) | créée à la main une fois, hors Terraform, jamais dans le dépôt ni dans le state ; supprimée du disque après usage |
-| Clé Tailscale | AWS SSM Parameter Store | même chemin |
-| Clé AWS (pour `terraform apply`) | le poste seulement | absente de GitHub ; la CI ne parle jamais à AWS |
-| kubeconfig | l'instance seulement | port 6443 fermé |
+En bref : les secrets applicatifs sont dans Git **chiffrés** ; la clé privée age et la clé Tailscale sont dans AWS SSM (créées à la main, hors Terraform) ; la clé AWS reste sur le poste ; le kubeconfig reste sur l'instance. Le rôle IAM de l'instance ne lit **que ces deux paramètres SSM**.
 
-Le rôle IAM de l'instance n'a le droit de lire **que ces deux paramètres SSM**.
+Le tableau complet (une ligne par secret, avec sa protection) est dans [secrets/README.md](../secrets/README.md#où-vit-chaque-secret), qui en est la **seule version de référence**.
 
 ## Pourquoi le kubeconfig n'est pas dans les paramètres Git
 

@@ -1,4 +1,4 @@
-# Secrets : jamais en clair (les secrets versionnes seront chiffres avec SOPS + age)
+# Secrets : jamais en clair (les secrets versionnes sont chiffres avec SOPS + age, dans secrets/)
 .env
 .env.*
 !.env.example
@@ -6,7 +6,7 @@
 age.key
 keys.txt
 
-# Terraform (etape suivante)
+# Terraform (etat local et reglages personnels)
 .terraform/
 *.tfstate
 *.tfstate.*

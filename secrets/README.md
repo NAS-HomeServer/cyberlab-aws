@@ -82,7 +82,7 @@ La CI n'utilise aucun secret, ne demande que `permissions: contents: read` et to
 ```bash
 brew install age sops
 scripts/secrets.sh keygen            # crée la clé privée et écrit la clé publique dans .sops.yaml
-#  >>> sauvegardez ~/.config/sops/age/keys.txt dans un gestionnaire de mots de passe
+#  >>> sauvegarder ~/.config/sops/age/keys.txt dans un gestionnaire de mots de passe
 scripts/secrets.sh init staging      # crée secrets/staging/*.sops.yaml depuis secrets/templates/
 scripts/secrets.sh init production
 ```
@@ -97,7 +97,7 @@ scripts/secrets.sh edit staging dns-analyzer-env                                
 
 `set` renseigne une valeur à la fois, sans éditeur : avec `--clipboard`, il lit le presse-papiers puis le vide ; sans, il demande la valeur en saisie masquée (collez avec Cmd+V, rien ne s'affiche).
 
-`secrets/templates/` liste les variables attendues pour chaque Secret (déduites du code des backends) : comparez-les au `.env` de chaque backend sur le NAS. Staging et production ont **chacun leurs tunnels** (tokens distincts de ceux du NAS), à créer dans le tableau de bord Cloudflare avant de remplir les fichiers.
+`secrets/templates/` liste les variables attendues pour chaque Secret (déduites du code des backends) : les comparer au `.env` de chaque backend sur le NAS. Staging et production ont **chacun leurs tunnels** (tokens distincts de ceux du NAS), à créer dans le tableau de bord Cloudflare avant de remplir les fichiers.
 
 ### Vérifier
 
