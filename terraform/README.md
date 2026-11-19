@@ -66,8 +66,8 @@ sudo cloud-init status --wait        # attendre "status: done"
 sudo tail -5 /var/log/cyberlab-bootstrap.log   # "Bootstrap termine."
 sudo kubectl get pods -A             # argocd-* Running
 sudo kubectl -n cyberlab-staging get secrets   # 5 secrets
-sudo kubectl -n argocd get applications        # cyberlab-staging, cyberlab-production, monitoring : Synced / Healthy
-sudo kubectl -n cyberlab-production get pods   # 3 backends + 3 tunnels Running
+sudo kubectl -n argocd get applications        # staging et monitoring : Synced / Healthy ; cyberlab-production : OutOfSync jusqu au clic « Sync »
+sudo kubectl -n cyberlab-production get pods   # vide tant que « Sync » n a pas ete valide ; ensuite 3 backends + 3 tunnels Running
 ```
 
 ## 5. Fin de démonstration
