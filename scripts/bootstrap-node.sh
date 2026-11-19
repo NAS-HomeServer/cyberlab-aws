@@ -145,13 +145,12 @@ log "8/8 Applications Argo CD (le deploiement est ensuite pilote par Git)"
 for app in /opt/cyberlab-aws/k8s/argocd/applications/*.yaml; do
   sed -E "s|^( *repoURL:).*|\\1 $REPO_URL|; s|^( *targetRevision:).*|\\1 $REPO_REF|" "$app" | kubectl apply -f -
 done
-# La production n'a pas de synchronisation automatique (validation humaine par « Sync »). Seul le
-# premier deploiement est declenche ici ; ensuite chaque changement attend un clic.
-kubectl -n argocd patch application cyberlab-production --type merge -p '{"operation":{"sync":{"prune":true}}}' \
-  || log "ATTENTION : premier deploiement de cyberlab-production non declenche (a lancer par « Sync » dans Argo CD)."
+# La production n'a pas de synchronisation automatique : aucun deploiement n'est declenche ici,
+# meme le premier. Elle reste OutOfSync (Missing) jusqu'au clic sur « Sync » dans Argo CD.
 # Attente indicative (10 min max) : un echec ici (image, reseau) ne doit pas faire echouer le
 # bootstrap, K3s et Argo CD sont installes ; l'etat se lit dans `kubectl -n argocd get applications`.
-for app in cyberlab-staging cyberlab-production monitoring; do
+# cyberlab-production est exclue : elle n'est deployee qu'apres validation humaine.
+for app in cyberlab-staging monitoring; do
   kubectl -n argocd wait --for=jsonpath='{.status.health.status}'=Healthy "application/$app" --timeout=600s \
     || log "ATTENTION : $app n'est pas Healthy (voir : kubectl -n argocd get applications)"
 done
