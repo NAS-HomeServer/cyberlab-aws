@@ -35,15 +35,15 @@ Un seul module : [terraform/main/](../terraform/main/). Chaque fichier a un rôl
 | [iam.tf](../terraform/main/iam.tf) | Rôle IAM de l'instance : Systems Manager + lecture de 2 paramètres SSM seulement |
 | [budget.tf](../terraform/main/budget.tf) | Alerte e-mail à 80 % (réel) et 100 % (prévu) du budget mensuel |
 | [outputs.tf](../terraform/main/outputs.tf) | Valeurs affichées après `apply` : `instance_id`, `public_ip`, `ssh_user`, `region` |
-| [terraform.tfvars.example](../terraform/main/terraform.tfvars.example) | Modèle de vos réglages personnels (à copier en `terraform.tfvars`) |
+| [terraform.tfvars.example](../terraform/main/terraform.tfvars.example) | Modèle des réglages personnels (à copier en `terraform.tfvars`) |
 | [.terraform.lock.hcl](../terraform/main/.terraform.lock.hcl) | Versions exactes du fournisseur AWS (versionné) |
 
-## Ce que crée Terraform (23 éléments dans l'état)
+## Ce que crée Terraform (18 ressources, plus 5 lectures seules)
 
 | Famille | Ressources |
 |---|---|
 | Réseau | `aws_vpc.main`, `aws_internet_gateway.main`, `aws_subnet.public`, `aws_route_table.public`, `aws_route_table_association.public`, `aws_default_security_group.default` (verrouillé, vide) |
-| Sécurité | `aws_security_group.node`, `aws_vpc_security_group_egress_rule.all`, `aws_vpc_security_group_ingress_rule.ssh` (une par CIDR autorisé) |
+| Sécurité | `aws_security_group.node`, `aws_vpc_security_group_egress_rule.all`, `aws_vpc_security_group_ingress_rule.ssh` (une par CIDR autorisé : leur nombre dépend de `ssh_allowed_cidrs`) |
 | Calcul | `aws_instance.node`, `aws_key_pair.admin`, `aws_eip.node`, `aws_eip_association.node` |
 | IAM | `aws_iam_role.node`, `aws_iam_role_policy_attachment.ssm`, `aws_iam_role_policy.age_key`, `aws_iam_instance_profile.node` |
 | Coût | `aws_budgets_budget.monthly` |
@@ -79,14 +79,9 @@ terraform output                            # les sorties (IP publique, etc.)
 terraform plan                              # écart entre le code, le state et AWS
 ```
 
-### Situation actuelle
+### Lire un state vide
 
-Au moment de l'écriture de cette page :
-
-- `terraform.tfstate` est **vide** (0 ressource, `serial` 43) : l'infrastructure a été détruite par `terraform destroy`. Rien n'est facturé.
-- `terraform.tfstate.backup` contient les **23 éléments** listés ci-dessus : c'est l'état juste avant la destruction.
-
-Un `terraform.tfstate` vide n'est pas une erreur : il signifie « rien n'existe ». Un `terraform apply` recrée tout et le remplit.
+Après un `terraform destroy`, `terraform.tfstate` est **vide** (0 ressource) : c'est normal, cela signifie « rien n'existe, rien n'est facturé ». `terraform.tfstate.backup` garde l'état juste avant la destruction. Un `terraform apply` recrée tout et remplit le fichier ; `terraform state list` indique à tout moment ce qui est suivi.
 
 > Le state **survit** à `terraform destroy` (il est simplement vidé). C'est ce qui permet de détruire en fin de démonstration puis de reconstruire à l'identique.
 
