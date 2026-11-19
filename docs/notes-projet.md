@@ -172,7 +172,7 @@ dans la CI) ; Trivy config sans finding HIGH/CRITICAL. Finding connu et non trai
 
 ## Décision — pas d'Ansible côté AWS
 
-Le bootstrap de l'instance se fait par `cloud-init` (script passé en `user_data`) plutôt que par Ansible.
+Le script de démarrage de l'instance est exécuté par `cloud-init` (script passé en `user_data`) plutôt que par Ansible.
 Terraform seul reconstruit alors tout : `terraform apply`, puis Argo CD synchronise les applications.
 
 - **Pourquoi c'est possible** : les compétences visées demandent d'automatiser le déploiement
@@ -207,7 +207,7 @@ Explication complète et mode d'emploi : [secrets/README.md](../secrets/README.m
   tirets bas, l'expression régulière attendait de l'age réel). Corrigé.
 - Le script accepte `KUBE_CONTEXT` pour viser kind sans toucher au contexte courant.
 
-## Étape 5 — Bootstrap de l'instance (cloud-init)
+## Étape 5 — Script de démarrage de l'instance (cloud-init)
 
 ### Ce que fait `scripts/bootstrap-node.sh` (une fois, au premier démarrage)
 
@@ -220,7 +220,7 @@ puis création des 3 `Application` Argo CD. Le script passe dans shellcheck en C
 - **Un script plutôt qu'Ansible** : une exécution au premier démarrage suffit puisque l'instance est
   jetable. Le script est un fichier du dépôt (relisible), Terraform ne fait que le transmettre.
 - **Tout est épinglé et vérifié** : K3s, Argo CD, SOPS, Tailscale en version fixée **et** SHA-256
-  contrôlé. Une release modifiée après coup fait échouer le bootstrap au lieu de s'exécuter.
+  contrôlé. Une release modifiée après coup fait échouer le script de démarrage au lieu de s'exécuter.
 - **La clé age n'a pas besoin d'un droit KMS** : le SecureString est chiffré par la clé gérée `aws/ssm`,
   dont la politique autorise déjà le déchiffrement via SSM.
 - **Les pods ne peuvent pas lire cette clé** : IMDSv2 avec hop limit 1.
@@ -229,7 +229,7 @@ puis création des 3 `Application` Argo CD. Le script passe dans shellcheck en C
 - **Secrets Kubernetes non chiffrés dans la base de K3s** (disque EBS chiffré) : acceptable ici ; le
   chiffrement au repos d'etcd serait une amélioration.
 
-Le bootstrap n'est **pas** testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage
+Le script de démarrage n'est **pas** testable sur kind (il installe K3s sur une vraie VM) : le premier démarrage
 réel est le test.
 
 ## Étape 6 — GitOps : Argo CD, mise en production, rollback
@@ -238,8 +238,8 @@ Mode d'emploi : [gitops.md](gitops.md).
 
 - **Trois `Application` Argo CD** (staging, production, supervision). Staging et supervision se
   synchronisent automatiquement (`prune`, `selfHeal`) ; **la production se déploie sur validation humaine**
-  (clic sur « Sync » après la fusion de la PR), le bootstrap ne déclenchant que son premier déploiement.
-  Les applications sont créées par le bootstrap avec l'URL et la branche de Terraform (`repo_url`, `repo_ref`).
+  (clic sur « Sync » après la fusion de la PR), le script de démarrage ne déclenchant que son premier déploiement.
+  Les applications sont créées par le script de démarrage avec l'URL et la branche de Terraform (`repo_url`, `repo_ref`).
 - **Mise en production** : les digests de staging sont recopiés à la main vers production par une PR, relue et
   soumise aux 3 checks (dont la signature Cosign). La production ne reçoit jamais directement une image.
   La mise à jour du digest de staging se fait aussi par une PR manuelle.
@@ -248,14 +248,14 @@ Mode d'emploi : [gitops.md](gitops.md).
 - **Pas d'app-of-apps** : trois `Application` suffisent et permettent de tester une branche
   (`repo_ref`) sans modifier les fichiers.
 - **Une branche, deux dossiers** : staging et production suivent `main` mais des dossiers différents.
-- **Secrets hors Argo CD** : appliqués par le bootstrap, donc jamais élagués par `prune`.
+- **Secrets hors Argo CD** : appliqués par le script de démarrage, donc jamais élagués par `prune`.
 - **Argo CD, la bascule staging → production et le `git revert` ne sont pas testés sur kind** : la
   démonstration `apply` puis `destroy` sur AWS prouve qu'Argo CD déploie tout, et ces opérations se
   montrent en démonstration sur AWS. Les tests kind couvrent les manifestes, pas Argo CD.
 
 ## Étape 7 — Lien avec le NAS (Tailscale, remote_write, alertes)
 
-- **Transport : Tailscale**, déjà en place sur le NAS. L'instance l'installe au bootstrap, avec une clé
+- **Transport : Tailscale**, déjà en place sur le NAS. L'instance l'installe au démarrage, avec une clé
   d'authentification lue dans SSM (`/cyberlab-aws/tailscale-authkey`, même mécanisme que la clé age) ;
   l'agent écrit sur `http://100.104.202.81:9090/api/v1/write`.
 - **Règles d'alerte** pour le Prometheus du NAS : `nas-monitoring/cyberlab-aws.rules.yml`. Guide des
@@ -270,7 +270,7 @@ Mode d'emploi : [gitops.md](gitops.md).
   soir et ne pourrait pas se reconnecter. Contrepartie : les anciennes instances restent listées après
   un destroy.
 - **Pas de DNS Tailscale** (`--accept-dns=false`) : les pods gardent le DNS du cluster.
-- **Bootstrap tolérant** : sans paramètre SSM, l'instance démarre quand même (avertissement dans le
+- **Script de démarrage tolérant** : sans paramètre SSM, l'instance démarre quand même (avertissement dans le
   journal), seule la supervision ne remonte pas.
 - **Alertes bornées à `cluster="aws-k3s"`** et jobs `aws-*` : aucune interaction avec les règles du NAS.
   Pas d'alerte « métriques absentes » : l'instance n'est allumée que pour les démonstrations.
@@ -281,13 +281,13 @@ Mode d'emploi : [gitops.md](gitops.md).
 - **Règle mémoire** : la jointure `on(...)` supprimait les labels `env` et `cluster` (le résumé de
   l'alerte aurait affiché un environnement vide). Corrigé avec `group_left`.
 - **`tailscale up` ignore la variable `TS_AUTHKEY`** (supposé sans vérifier) : sans clé, il attend
-  indéfiniment une connexion interactive et le bootstrap restait bloqué. Corrigé : clé passée par
+  indéfiniment une connexion interactive et le script de démarrage restait bloqué. Corrigé : clé passée par
   `--auth-key=file:...`, délai de 120 s et avertissement, pour qu'un échec Tailscale ne bloque jamais
   K3s, Argo CD ni les applications.
 - **SIGPIPE** : `tailscale status | head -5` avec `set -o pipefail` donnait un code 141 et `set -e`
   arrêtait le script sans message. Corrigé en écrivant la sortie dans un fichier. Un premier diagnostic
   correct avait été écarté à tort par une reproduction locale trop simple. Leçon : un script de
-  bootstrap ne se valide que par un vrai démarrage.
+  démarrage ne se valide que par un vrai démarrage.
 - **Non testé de bout en bout** : le déclenchement de l'alerte sur Discord et la suspension/rétablissement
   de la synchronisation Argo CD pour la démonstration d'alerte se vérifient avec le NAS et AWS.
 
@@ -301,7 +301,7 @@ Mode d'emploi : [gitops.md](gitops.md).
 
 Instance neuve créée par un seul `terraform apply`, sans intervention ensuite :
 
-- instance lancée à 14:14:11 UTC, bootstrap terminé à 14:16:56 UTC : **2 min 45 s**
+- instance lancée à 14:14:11 UTC, script de démarrage terminé à 14:16:56 UTC : **2 min 45 s**
   (paquets 35 s, Argo CD 1 min 04 s, secrets 11 s, Tailscale 3 s) ;
 - **11 contrôles sur 11 OK** : 3 applications Argo CD `Synced/Healthy`, 6 deployments par namespace,
   secrets présents, clé age supprimée du disque, Tailscale connecté, 6 jobs `aws-*` reçus par le
