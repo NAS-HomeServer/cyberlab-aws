@@ -223,6 +223,7 @@ k8s/kind/test.sh --cleanup   # supprime le cluster de test
 
 - [docs/terraform.md](docs/terraform.md) : ce que Terraform crée, où est le state, comment le lire
 - [docs/kubernetes.md](docs/kubernetes.md) : où sont les manifestes, overlays, tunnels, NetworkPolicies, du Git au cluster
+- [docs/secrets.md](docs/secrets.md) : comment les secrets sont gérés, version courte (détail : [secrets/README.md](secrets/README.md))
 - [docs/notes-projet.md](docs/notes-projet.md) : décisions, alternatives écartées, difficultés rencontrées
 - [docs/gitops.md](docs/gitops.md) : Argo CD, mise en production, rollback
 - [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`, et ce qui est contrôlé
