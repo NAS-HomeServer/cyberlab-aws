@@ -1,6 +1,6 @@
 # Changements à appliquer sur le NAS (supervision d'AWS)
 
-Ce document décrit ce que **tu appliques toi-même** côté NAS pour que le Prometheus du NAS reçoive et surveille le cyberlab AWS. Rien n'est modifié dans le dépôt `HomeServer-monitoring` depuis ici.
+Ce document décrit ce qu'il faut appliquer **soi-même** côté NAS pour que le Prometheus du NAS reçoive et surveille le cyberlab AWS. Rien n'est modifié dans le dépôt `HomeServer-monitoring` depuis ici.
 
 ## Le flux
 
@@ -20,19 +20,19 @@ Ce document décrit ce que **tu appliques toi-même** côté NAS pour que le Pro
 
 ## 1. Tailscale : clé d'authentification et ACL
 
-L'instance rejoint ton réseau Tailscale (« tailnet ») au premier démarrage, avec une clé que tu crées une fois.
+L'instance rejoint le réseau Tailscale (« tailnet ») du propriétaire au premier démarrage, avec une clé créée une seule fois.
 
-1. **ACL** (console Tailscale → *Access controls*). Déclare le tag et limite ce qu'il peut joindre :
+1. **ACL** (console Tailscale → *Access controls*). Déclarer le tag et limiter ce qu'il peut joindre :
    ```json
    "tagOwners": {
      "tag:cyberlab-aws": ["autogroup:admin"]
    },
    "acls": [
-     // ... tes règles existantes ...
+     // ... règles existantes ...
      {"action": "accept", "src": ["tag:cyberlab-aws"], "dst": ["100.104.202.81:9090"]}
    ]
    ```
-   L'instance ne peut alors joindre **que le port 9090 du NAS**, rien d'autre sur le tailnet. Attention : si ta politique contient déjà une règle `"src": ["*"], "dst": ["*:*"]`, elle couvre aussi les appareils étiquetés ; remplace `"*"` par `"autogroup:member"` (tes appareils) pour que la limite s'applique.
+   L'instance ne peut alors joindre **que le port 9090 du NAS**, rien d'autre sur le tailnet. Attention : si la politique contient déjà une règle `"src": ["*"], "dst": ["*:*"]`, elle couvre aussi les appareils étiquetés ; remplace `"*"` par `"autogroup:member"` (les appareils du propriétaire) pour que la limite s'applique.
 2. **Clé** (*Settings → Keys → Generate auth key*) :
    - *Reusable* : **oui** (chaque reconstruction de l'instance réutilise la même clé) ;
    - *Ephemeral* : **non** : une machine éphémère serait retirée du tailnet pendant l'arrêt du soir, et ne pourrait plus se reconnecter au redémarrage ;
@@ -44,11 +44,11 @@ L'instance rejoint ton réseau Tailscale (« tailnet ») au premier démarrage, 
    unset TSKEY
    ```
 
-À chaque `terraform destroy` puis `apply`, la nouvelle instance apparaît dans la console sous un nom en `-1`, `-2`… : tu peux supprimer les anciennes entrées hors ligne.
+À chaque `terraform destroy` puis `apply`, la nouvelle instance apparaît dans la console sous un nom en `-1`, `-2`… : les anciennes entrées hors ligne peuvent être supprimées.
 
 ## 2. Prometheus du NAS : activer le récepteur
 
-Dans `monitoring/docker-compose.yml` de `HomeServer-monitoring`, ajoute **une ligne** aux arguments de Prometheus :
+Dans `monitoring/docker-compose.yml` de `HomeServer-monitoring`, ajouter **une ligne** aux arguments de Prometheus :
 
 ```yaml
     command:
@@ -56,15 +56,15 @@ Dans `monitoring/docker-compose.yml` de `HomeServer-monitoring`, ajoute **une li
       - '--web.enable-remote-write-receiver'
 ```
 
-Puis redéploie le service (ton Ansible habituel, ou `docker compose up -d prometheus`).
+Puis redéployer le service (Ansible habituel, ou `docker compose up -d prometheus`).
 
 Le port `9090` est déjà publié sur toutes les interfaces : l'adresse `100.104.202.81:9090` (Tailscale) répond sans toucher au reverse proxy DSM (`prometheus-lan` n'est pas concerné, il ne sert que l'accès web par nom d'hôte). Si le **pare-feu DSM** est actif, autorise le port 9090 depuis l'interface Tailscale ou depuis la plage `100.64.0.0/10`.
 
-Ce récepteur accepte les écritures de **n'importe quel client qui atteint le port 9090** ; c'est l'ACL Tailscale ci-dessus qui limite cela à l'instance AWS (et à ton LAN, comme avant).
+Ce récepteur accepte les écritures de **n'importe quel client qui atteint le port 9090** ; c'est l'ACL Tailscale ci-dessus qui limite cela à l'instance AWS (et au LAN, comme avant).
 
 ## 3. Règles d'alerte
 
-Copie [`nas-monitoring/cyberlab-aws.rules.yml`](../nas-monitoring/cyberlab-aws.rules.yml) dans `config/rules/` de `HomeServer-monitoring` (le dossier est déjà chargé par `rule_files: rules/*.yml`), puis recharge Prometheus :
+Copier [`nas-monitoring/cyberlab-aws.rules.yml`](../nas-monitoring/cyberlab-aws.rules.yml) dans `config/rules/` de `HomeServer-monitoring` (le dossier est déjà chargé par `rule_files: rules/*.yml`), puis recharger Prometheus :
 
 ```bash
 curl -X POST http://localhost:9090/-/reload     # --web.enable-lifecycle est déjà actif
@@ -79,7 +79,7 @@ curl -X POST http://localhost:9090/-/reload     # --web.enable-lifecycle est dé
 | `AwsContainerHighMemory` | un conteneur dépasse 85 % de sa limite mémoire pendant 5 min | warning |
 | `AwsNodeLowMemory` | moins de 10 % de mémoire disponible sur l'instance pendant 10 min | warning |
 
-Elles partent par ton Alertmanager existant, vers Discord, sans changement de sa configuration. **Il n'y a pas d'alerte « métriques absentes »** : l'instance n'est allumée que pour les démonstrations, l'alerte sonnerait en permanence.
+Elles partent par l'Alertmanager existant, vers Discord, sans changement de sa configuration. **Il n'y a pas d'alerte « métriques absentes »** : l'instance n'est allumée que pour les démonstrations, l'alerte sonnerait en permanence.
 
 Les règles sont vérifiées par `yamllint` dans la CI.
 
@@ -99,7 +99,7 @@ Sur le NAS (interface Prometheus, onglet *Graph*) :
 count by (env, job) (up{cluster="aws-k3s"})
 ```
 
-Tu dois voir les jobs `aws-kubelet`, `aws-cadvisor`, `aws-node`, `aws-kube-state-metrics`, `aws-cloudflared` et `aws-prometheus-agent`. Requêtes utiles pour un tableau de bord :
+On doit voir les jobs `aws-kubelet`, `aws-cadvisor`, `aws-node`, `aws-kube-state-metrics`, `aws-cloudflared` et `aws-prometheus-agent`. Requêtes utiles pour un tableau de bord :
 
 | Panneau | Requête |
 |---|---|
@@ -111,7 +111,7 @@ Tu dois voir les jobs `aws-kubelet`, `aws-cadvisor`, `aws-node`, `aws-kube-state
 
 Si l'agent perd le NAS (coupure, redémarrage), il garde ses échantillons en mémoire et dans son WAL (4 h) puis les renvoie : sans trou visible (testé une fois à la main, 90 s de coupure).
 
-À surveiller sur le NAS : la mémoire de Prometheus est limitée à 768 Mo ; le cyberlab AWS ajoute quelques milliers de séries (bornées par `sample_limit` dans l'agent). Contrôle `prometheus_tsdb_head_series` après quelques jours.
+À surveiller sur le NAS : la mémoire de Prometheus est limitée à 768 Mo ; le cyberlab AWS ajoute quelques milliers de séries (bornées par `sample_limit` dans l'agent). Contrôler `prometheus_tsdb_head_series` après quelques jours.
 
 ## 5. Démonstration : déclencher une alerte
 
@@ -128,9 +128,9 @@ Après environ 2 min 30 (`for: 2m` + délai de regroupement de l'Alertmanager), 
 sudo kubectl -n argocd patch application cyberlab-production --type merge -p '{"operation":{"sync":{}}}'
 ```
 
-Argo CD ramène `sherlock` à 1 replica, l'alerte se résout (message « résolu » sur Discord). **Lance la coupure en début de démonstration**, pour que l'alerte soit visible quand tu y reviens.
+Argo CD ramène `sherlock` à 1 replica, l'alerte se résout (message « résolu » sur Discord). **Lancer la coupure en début de démonstration**, pour que l'alerte soit visible au moment d'y revenir.
 
-## Résumé : ce que tu dois faire, dans l'ordre
+## Résumé : ce qu'il faut faire, dans l'ordre
 
 1. Tailscale : ACL avec le tag, création de la clé, `put-parameter` (§1).
 2. NAS : ajouter `--web.enable-remote-write-receiver`, redéployer (§2).

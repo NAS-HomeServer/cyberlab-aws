@@ -17,7 +17,7 @@ Ressources créées par `main/` : un VPC (`10.20.0.0/16`), une passerelle Intern
 
 ```bash
 cd terraform/main
-cp terraform.tfvars.example terraform.tfvars  # clé publique, votre IP en /32, e-mail du budget
+cp terraform.tfvars.example terraform.tfvars  # clé publique, son IP en /32, e-mail du budget
 terraform init
 terraform plan                                # relire : rien ne doit être détruit par surprise
 terraform apply                               # ⚠ crée des ressources facturées (instance, IP élastique)

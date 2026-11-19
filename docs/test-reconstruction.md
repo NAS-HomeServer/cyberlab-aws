@@ -34,7 +34,7 @@ terraform state list            # ne doit rien afficher
 terraform apply
 ```
 
-Mesurer le temps entre `terraform apply` et le moment où tout est `Healthy` : c'est la durée de reconstruction à annoncer au jury. Attendu : une dizaine de minutes au plus (création AWS ~1 min, script de démarrage (cloud-init) environ 3 min, puis démarrage des pods).
+Mesurer le temps entre `terraform apply` et le moment où tout est `Healthy` : c'est la durée de reconstruction à annoncer au jury. Attendu : une dizaine de minutes au plus (création AWS ~1 min, script de démarrage (cloud-init) environ 3 min, puis démarrage des pods). Les « moins de 3 minutes » du README ne mesurent que le script de démarrage.
 
 ## Vérifier que tout est revenu
 
