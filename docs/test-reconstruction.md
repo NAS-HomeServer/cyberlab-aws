@@ -17,7 +17,7 @@ L'IP publique change après un destroy (nouvelle IP élastique) : sans conséque
 - `terraform/main/terraform.tfvars` présent (voir [terraform/README.md](../terraform/README.md)) et le fichier `terraform.tfstate` de la dernière exécution, sur le même poste : sans lui, Terraform ne retrouve pas ce qu'il a créé.
 - Les deux paramètres SSM existent : `aws --region eu-west-3 ssm describe-parameters --query 'Parameters[].Name'`.
 - Clé Tailscale non expirée (90 jours maximum, voir [changements-nas-monitoring.md](changements-nas-monitoring.md) §1).
-- `main` contient tout ce qu'on veut tester : le bootstrap clone `repo_ref` (`main` par défaut).
+- `main` contient tout ce qu'on veut tester : le script de démarrage clone `repo_ref` (`main` par défaut).
 
 ## Déroulé
 
@@ -34,7 +34,7 @@ terraform state list            # ne doit rien afficher
 terraform apply
 ```
 
-Mesurer le temps entre `terraform apply` et le moment où tout est `Healthy` : c'est la durée de reconstruction à annoncer au jury. Attendu : une dizaine de minutes au plus (création AWS ~1 min, bootstrap cloud-init environ 3 min, puis démarrage des pods).
+Mesurer le temps entre `terraform apply` et le moment où tout est `Healthy` : c'est la durée de reconstruction à annoncer au jury. Attendu : une dizaine de minutes au plus (création AWS ~1 min, script de démarrage (cloud-init) environ 3 min, puis démarrage des pods).
 
 ## Vérifier que tout est revenu
 
@@ -50,22 +50,22 @@ sudo kubectl get pods -A                         # backends et tunnels : Running
 
 | Contrôle | Prouve que |
 |---|---|
-| « Bootstrap termine » dans le journal | le script cloud-init est allé jusqu'au bout |
+| « Bootstrap termine » dans le journal | le script de démarrage est allé jusqu'au bout |
 | 3 applications Argo CD `Synced/Healthy` | Argo CD a lu Git et déployé staging, production et la supervision |
 | Pods `Running` dans `cyberlab-staging` et `cyberlab-production` | backends et tunnels tournent, secrets déchiffrés (SOPS) et appliqués |
 
-Pour suivre le bootstrap en direct pendant l'attente : `sudo tail -f /var/log/cyberlab-bootstrap.log`.
+Pour suivre le script de démarrage en direct pendant l'attente : `sudo tail -f /var/log/cyberlab-bootstrap.log`.
 
 ## En cas d'échec
 
 | Symptôme | Où regarder |
 |---|---|
-| Bootstrap non terminé | `sudo tail -50 /var/log/cyberlab-bootstrap.log` : la dernière étape atteinte indique la cause (réseau, empreinte SHA-256 refusée, paramètre SSM illisible) |
+| Script de démarrage non terminé | `sudo tail -50 /var/log/cyberlab-bootstrap.log` : la dernière étape atteinte indique la cause (réseau, empreinte SHA-256 refusée, paramètre SSM illisible) |
 | Applications non `Healthy` | `sudo kubectl -n argocd get applications` puis `describe application <nom>` |
 | Aucun job `aws-*` sur le NAS | `sudo tailscale status` (clé expirée ? ACL ?), `sudo kubectl -n monitoring logs deploy/prometheus-agent --tail=20` |
 | Pods `Pending` / `OOMKilled` | mémoire : `instance_type = "t3.medium"` (une `t3.small` est trop juste) |
 
-Le bootstrap ne s'exécute qu'**une fois** par instance (`/var/lib/cyberlab-bootstrap.done`) ; pour le rejouer il faut recréer l'instance (`terraform apply -replace=aws_instance.node`) plutôt que de le relancer à la main.
+Le script de démarrage ne s'exécute qu'**une fois** par instance (`/var/lib/cyberlab-bootstrap.done`) ; pour le rejouer il faut recréer l'instance (`terraform apply -replace=aws_instance.node`) plutôt que de le relancer à la main.
 
 ## Résultat à consigner
 
