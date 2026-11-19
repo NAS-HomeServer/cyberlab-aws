@@ -26,7 +26,7 @@
 | Élément | Rôle |
 |---|---|
 | `k8s/argocd/applications/*.yaml` | Une `Application` par cible : `cyberlab-staging`, `cyberlab-production`, `monitoring`. Elles surveillent un dossier de ce dépôt. `cyberlab-staging` et `monitoring` appliquent son contenu automatiquement (`prune` et `selfHeal` activés) ; **`cyberlab-production` n'a pas de synchronisation automatique** : chaque changement attend un clic sur « Sync ». |
-| `scripts/bootstrap-node.sh` | Étape 8 : crée ces `Application` au premier démarrage de l'instance, déclenche le premier déploiement de la production, avec l'URL et la branche choisies dans Terraform (`repo_url`, `repo_ref`). |
+| `scripts/bootstrap-node.sh` | Étape 8 : crée ces `Application` au premier démarrage de l'instance, ne déclenche aucun déploiement de la production (validation par « Sync »), avec l'URL et la branche choisies dans Terraform (`repo_url`, `repo_ref`). |
 
 Les **secrets** ne passent pas par Argo CD : ils sont appliqués une fois par le script de démarrage (`secrets.sh apply`). Argo CD ne les gère pas, donc `prune` ne peut pas les supprimer.
 
