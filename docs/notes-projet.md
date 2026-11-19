@@ -53,7 +53,7 @@ Conséquences :
 - **Config de l'agent en deux fichiers** : `scrape.yml` (quoi collecter, commun) et `prometheus.yml`
   (où envoyer, quels labels : un par overlay), reliés par `scrape_config_files`.
 - **Images épinglées par digest** : backends via `images:`/`digest:` dans les overlays (pour recopier les mêmes digests
-  de staging vers production), les autres directement dans les manifestes, suivies par Renovate.
+  de staging vers production), les autres directement dans les manifestes, mises à jour à la main par pull request (pas d'outil de mise à jour automatique).
 - **Durcissement repris du compose** : `readOnlyRootFilesystem`, `capabilities.drop: [ALL]`,
   `allowPrivilegeEscalation: false`, `emptyDir` en mémoire pour `/tmp`, limites mémoire, probes
   (startup, readiness, liveness). Ajouts : `runAsNonRoot`, seccomp `RuntimeDefault`, jeton de
@@ -117,8 +117,8 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
   minutes de CI en plus).
 - **Limite connue : la CI de ce dépôt ne scanne pas les images** (seulement les configurations). Un
   scan bloquant des images existantes aurait remonté des vulnérabilités HIGH/CRITICAL dès le premier
-  jour ; la CI de chaque backend scanne déjà son image. Risque connu et suivi : mises à jour par Renovate,
-  reconstruction des backends.
+  jour ; la CI de chaque backend scanne déjà son image. Risque connu, non automatisé : mises à jour d'images à la main
+  par pull request, reconstruction des backends.
 
 ### Difficultés rencontrées
 
@@ -139,7 +139,7 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
   sensibles : jamais commité.
 - **Région `eu-west-3` (Paris)**, modifiable par variable.
 - **Instance `t3.medium`** (x86 : images en amd64). La `t3.small` ne tient pas en mémoire (K3s, Argo CD
-  et 12 pods : OOMKilled), voir étape 5.
+  et les pods applicatifs : OOMKilled), voir étape 5.
 - **Ubuntu 24.04 LTS** via le paramètre SSM public de Canonical ; `ignore_changes = [ami]` pour qu'une
   nouvelle AMI ne remplace pas l'instance au prochain `plan`.
 - **Réseau** : 1 VPC, 1 sous-réseau public, pas de NAT Gateway (≈ 35 $/mois).
@@ -288,8 +288,9 @@ Mode d'emploi : [gitops.md](gitops.md).
   arrêtait le script sans message. Corrigé en écrivant la sortie dans un fichier. Un premier diagnostic
   correct avait été écarté à tort par une reproduction locale trop simple. Leçon : un script de
   démarrage ne se valide que par un vrai démarrage.
-- **Non testé de bout en bout** : le déclenchement de l'alerte sur Discord et la suspension/rétablissement
-  de la synchronisation Argo CD pour la démonstration d'alerte se vérifient avec le NAS et AWS.
+- **Non testé de bout en bout** : le déclenchement de l'alerte sur Discord se vérifie avec le NAS et AWS.
+  La démonstration (couper un backend en production, puis « Sync ») ne demande aucune suspension préalable de la
+  synchronisation, la production n'en ayant pas d'automatique.
 
 ## Étape 8 — Test de reconstruction et README
 
