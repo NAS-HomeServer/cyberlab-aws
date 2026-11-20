@@ -1,5 +1,7 @@
 # Terraform : ce qui est en place, simplement
 
+> **À retenir** : Terraform construit la machine (VPC, EC2, IAM, budget), Git décrit ce qui tourne dessus ; le state est local et survit au `destroy`.
+
 Cette page répond à deux questions : **qu'est-ce que Terraform crée sur AWS**, et **où est son *state* (état)** ? Pour la partie Kubernetes, voir [kubernetes.md](kubernetes.md).
 
 ## Vue d'ensemble
