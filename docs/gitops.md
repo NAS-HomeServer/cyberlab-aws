@@ -1,5 +1,7 @@
 # Déploiement GitOps : Argo CD, mise en production, rollback
 
+> **À retenir** : pull request fusionnée, puis Argo CD applique seul en staging ; la production attend un clic « Sync » ; le rollback est un `git revert`.
+
 **Principe : Git est la seule source de vérité.** Personne ne lance `kubectl apply` pour déployer : on fusionne une pull request, Argo CD voit le changement et l'applique au cluster.
 
 ```
