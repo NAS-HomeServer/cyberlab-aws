@@ -1,35 +1,19 @@
 # Cyberlab AWS
 
-Migration du **cyberlab** d'un NAS Synology vers **AWS**.
+Migration du **cyberlab** (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrator`, chacun derrière un tunnel `cloudflared`) d'un NAS Synology vers **AWS**, en 2 environnements : `staging` et `production`.
 
-**Ce qui est migré** : 3 backends (`sherlock`, `dns-analyzer`, `audit-orchestrator`), chacun derrière son propre tunnel `cloudflared`, soit 6 services, dans chacun des 2 environnements (`staging` et `production`).
+## En bref
 
-**Sommaire** : [Réalisé en bref](#ce-qui-a-été-réalisé-en-bref) · [Architecture](#architecture) · [Secrets](#secrets) · [Images](#doù-viennent-les-images) · [Installation](#installation-complète) · [Exploitation](#exploiter-le-cyberlab) · [Structure](#structure-du-dépôt) · [Scripts et tests](#scripts-et-tests-locaux) · [CI](#pipeline-ci) · [Documentation](#documentation)
+| Brique | Outil | Rôle |
+|---|---|---|
+| Infrastructure | **Terraform** | VPC, EC2, IAM limité, IP élastique, budget |
+| Démarrage | **cloud-init** + `scripts/bootstrap-node.sh` | installe K3s, Argo CD, secrets, Tailscale au premier démarrage |
+| Déploiement | **Argo CD + Kustomize** (GitOps) | Git est la source de vérité ; staging automatique, production après un clic « Sync » |
+| Secrets | **SOPS + age** | secrets chiffrés dans Git, clé privée dans AWS SSM |
+| Qualité / sécurité | **GitHub Actions** | lint, Gitleaks, Cosign, Trivy, test sur kind |
+| Supervision | **Prometheus Agent** | envoie les métriques au Prometheus du NAS par Tailscale |
 
-**Comment ça marche**
-
-- **Terraform** crée l'instance EC2 et lui remet un script de démarrage (`scripts/bootstrap-node.sh`).
-- **cloud-init** (déjà présent dans l'image Ubuntu) exécute ce script une seule fois, au premier démarrage : c'est lui qui installe K3s et Argo CD.
-- Le même script crée 3 `Application` Argo CD (`k8s/argocd/applications/` : `cyberlab-staging`, `cyberlab-production`, `monitoring`). Chacune pointe vers un dossier de `k8s/` : **Argo CD déploie ce dossier** depuis ce dépôt (GitOps). Un dossier de `k8s/` n'est déployé que s'il existe une `Application` qui le référence.
-- La **mise en production** se fait par pull request, après validation en staging, puis un clic sur « Sync » dans Argo CD ; le **rollback** par `git revert`.
-- Un **Prometheus Agent**, déployé par Argo CD (application `monitoring`, dossier `k8s/monitoring/overlays/aws`), envoie les métriques au Prometheus du NAS par Tailscale : la supervision reste sur le NAS.
-
-> **Test de reconstruction** : `terraform destroy` puis `terraform apply` rétablissent l'ensemble sans aucune intervention manuelle. Voir [docs/test-reconstruction.md](docs/test-reconstruction.md).
-
-**Les deux autres dépôts**
-
-- [cyberlab-infra](https://github.com/NAS-HomeServer/cyberlab-infra) : le NAS reste la production tant que la bascule n'est pas décidée. Ce dépôt n'est pas modifié.
-- [HomeServer-monitoring](https://github.com/NAS-HomeServer/HomeServer-monitoring) : Prometheus, Grafana et Alertmanager du NAS.
-
-## Ce qui a été réalisé, en bref
-
-- **Infrastructure** : VPC, EC2, rôle IAM limité, IP élastique et budget avec alertes e-mail, le tout par Terraform ; un seul `terraform apply` suffit, K3s, Argo CD et Tailscale s'installent seuls.
-- **Déploiement GitOps** : 2 environnements, automatique en staging, validé par un clic « Sync » en production ; mise en production par pull request, retour en arrière par `git revert`.
-- **Supervision** : un Prometheus Agent envoie les métriques au Prometheus du NAS (Tailscale) ; les alertes arrivent sur Discord.
-- **Sécurité** : secrets chiffrés dans Git (SOPS + age), images par digest et signatures Cosign vérifiées, aucun port entrant public, ACL Tailscale limitée au port de Prometheus, disque chiffré, IMDSv2.
-- **Qualité** : CI à 3 contrôles obligatoires (qualité, sécurité, tests sur kind) et test de reconstruction (`destroy` puis `apply`, tout revient sans intervention).
-
-Résultat mesuré le 17/11/2026 : une instance neuve est entièrement installée en **moins de 3 minutes** (hors création AWS) et les 3 applications Argo CD passent `Synced/Healthy`. Détails et difficultés rencontrées : [docs/notes-projet.md](docs/notes-projet.md).
+Mise en production : pull request (digest d'image) puis « Sync » ; retour arrière : `git revert`. Une instance neuve est prête en moins de 3 minutes (hors création AWS), et `terraform destroy` puis `apply` reconstruit tout sans intervention ([test de reconstruction](docs/test-reconstruction.md)).
 
 ## Architecture
 
@@ -57,152 +41,74 @@ Flux de déploiement : une pull request fusionnée sur `main` → Argo CD voit l
 
 ### Qui installe quoi
 
-`terraform apply` crée l'EC2, le réseau, l'IAM et le budget, avec un `user_data`. Au premier démarrage, cloud-init exécute `scripts/bootstrap-node.sh` (environ 3 minutes) : paquets, K3s, Argo CD, déchiffrement des secrets (la clé age est lue dans SSM puis supprimée du disque), Tailscale, puis création des 3 `Application` Argo CD, qui déploient le reste depuis Git.
-
 | Élément | Installé par | Quand |
 |---|---|---|
 | EC2, réseau, IAM, budget | **Terraform** (`terraform/main`) | `terraform apply`, à la main |
 | K3s, Argo CD, secrets, Tailscale | **`scripts/bootstrap-node.sh`** (cloud-init) | une seule fois, au premier démarrage |
-| Backends et tunnels (13 pods : 6 en staging, 7 en production), supervision (3 pods de plus) | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` (staging, supervision) ; production après un clic sur « Sync » |
+| Backends, tunnels, supervision | **Argo CD**, depuis `k8s/` | à chaque fusion sur `main` (production : après « Sync ») |
 
-**Exemple : le Prometheus Agent.** Le dossier `k8s/monitoring/` ne s'installe pas seul. Le script de démarrage applique `k8s/argocd/applications/monitoring.yaml` (étape 8/8, un `kubectl apply` par `Application`) ; cette `Application` désigne `k8s/monitoring/overlays/aws` et un namespace `monitoring` ; Argo CD y crée alors le Prometheus Agent, `node-exporter` et `kube-state-metrics`, avec synchronisation automatique. C'est le seul `kubectl apply` du projet : il n'applique que ces 3 fichiers `Application`.
+Terraform ne parle jamais à Kubernetes. La CI ne lance ni `plan` ni `apply` : elle valide et teste ; le « CD » est assuré par Argo CD, qui tire depuis Git. Les justifications des choix (K3s plutôt qu'EKS, un seul cluster, state local, etc.) sont dans [docs/notes-projet.md](docs/notes-projet.md).
 
-Terraform ne parle jamais à Kubernetes (ni provider `kubernetes`, ni `helm_release`) : il fournit le script via `user_data`, et c'est l'instance qui s'installe elle-même. La CI ne lance ni `plan` ni `apply` : elle valide (`fmt`, `validate`, Trivy) et teste les manifestes sur un cluster jetable. Le « CD » est assuré par Argo CD en mode GitOps, c'est lui qui tire depuis Git.
+## Secrets et images
 
-### Choix structurants (justifications dans [docs/notes-projet.md](docs/notes-projet.md))
+- Le dépôt est **public** : les secrets y sont **chiffrés** (SOPS + age), la clé privée vit dans AWS SSM et est effacée du disque après usage. La CI refuse tout fichier non chiffré. → [docs/secrets.md](docs/secrets.md)
+- Les 3 images viennent de `ghcr.io/ag69075/…`, référencées **par digest** dans `k8s/cyberlab/overlays/{staging,production}/kustomization.yaml`. La CI vérifie leur signature **Cosign**. Nouvelle version : digest dans staging (PR), puis dans production (PR). → [docs/gitops.md](docs/gitops.md)
 
-| Choix | Pourquoi |
-|---|---|
-| K3s sur une seule instance | cyberlab de petite taille, coût faible ; un EKS coûterait plus que tout le reste |
-| Argo CD + Kustomize | GitOps déclaratif : Git est la source de vérité, la mise en production et le rollback sont des opérations Git, validées par un « Sync » pour la production |
-| Tunnels cloudflared | aucun port entrant à ouvrir, le trafic arrive par des connexions sortantes |
-| SOPS + age, clé dans SSM | aucun secret en clair dans le dépôt, la clé privée ne vit que dans le Parameter Store |
-| Images référencées par digest | une image ne peut pas changer sous nos pieds ; la CI vérifie leur signature Cosign |
-| Prometheus Agent → NAS par Tailscale | supervision centralisée sur l'existant, aucun port ouvert, accès limité par ACL |
-| État Terraform local | projet à un seul opérateur : le fichier `terraform.tfstate` survit aux `destroy` sur le poste, aucun bucket à créer ni à expliquer |
+## Installation
 
-## Secrets
+> Valeurs propres à l'auteur (dépôt, images `ag69075`, adresse Tailscale du NAS, tunnels Cloudflare) : à adapter pour rejouer le projet.
 
-Le dépôt est **public** : aucun secret n'y entre en clair, ni dans la CI. Les secrets applicatifs (tokens des tunnels, `.env` des backends) sont dans Git **chiffrés par SOPS + age** ; la clé privée vit dans AWS Systems Manager, jamais dans le dépôt, et l'instance la supprime de son disque après usage. La CI refuse tout fichier non chiffré.
+Prérequis : Terraform ≥ 1.10, AWS CLI, [age](https://github.com/FiloSottile/age), [SOPS](https://github.com/getsops/sops) ; pour le test local, Docker + [kind](https://kind.sigs.k8s.io/) + `kubectl`.
 
-→ **[secrets/README.md](secrets/README.md)** : à quoi servent SOPS et age, comment les utiliser, où vit chaque secret, démonstration et questions probables du jury.
-
-## D'où viennent les images
-
-Les 3 backends sont construits et publiés dans le registre GitHub (**ghcr.io**), sous le compte `ag69075`. Le cluster les télécharge sans identifiant : ces paquets sont publics.
-
-| Service | Image | Dépôt qui la construit |
-|---|---|---|
-| sherlock | `ghcr.io/ag69075/cyberlab_sherlock_backend` | `ag69075/cyberlab_sherlock_backend` |
-| dns-analyzer | `ghcr.io/ag69075/cyberlab_dns-analyzer` | `ag69075/cyberlab_dns-analyzer` |
-| audit-orchestrator | `ghcr.io/ag69075/cyberlab_audit_orchestrator` | `ag69075/cyberlab_audit_orchestrator` |
-| tunnels | `cloudflare/cloudflared` (image officielle, Docker Hub) | Cloudflare |
-
-- **Une image est toujours désignée par son digest** (`@sha256:…`) et non par une étiquette comme `latest` : l'image déployée est exactement celle qui a été validée. Les digests sont écrits dans `k8s/cyberlab/overlays/{staging,production}/kustomization.yaml`.
-- **Chaque dépôt de backend signe son image** (Cosign, sans clé, via son workflow GitHub). La CI de ce dépôt vérifie la signature (`ci/verify-signatures.sh`) : une image non signée par le bon dépôt bloque la fusion.
-- **Pour déployer une nouvelle version** : le dépôt du backend publie l'image, on écrit son digest dans l'overlay staging (une pull request), puis on recopie ce digest dans l'overlay production (une seconde pull request). Voir [docs/gitops.md](docs/gitops.md).
-
-## Installation complète
-
-> **Ce guide est celui de l'auteur.** Le dépôt Git (`repo_url`), les images (`ghcr.io/ag69075/…`), l'adresse Tailscale du NAS (`100.104.202.81`) et les tunnels Cloudflare sont ceux du projet d'origine ; une autre personne devra les adapter (variables Terraform `repo_url` / `repo_ref`, overlays, `k8s/monitoring/overlays/aws/prometheus.yml`).
-
-Prérequis sur le poste : Terraform ≥ 1.10, AWS CLI configuré, [age](https://github.com/FiloSottile/age) et [SOPS](https://github.com/getsops/sops), `kubectl` (pour le test local), Docker + [kind](https://kind.sigs.k8s.io/) (pour le test local). Côté services : un compte AWS, un domaine Cloudflare avec 6 tunnels créés (un par backend et par environnement), un compte Tailscale, et le Prometheus du NAS.
-
-1. **Cloner le dépôt** et créer une clé SSH dédiée : `ssh-keygen -t ed25519 -f ~/.ssh/cyberlab-aws`.
-2. **Secrets** (une fois) : renseigner les tokens des tunnels et les variables des backends, chiffrés par SOPS. → [secrets/README.md](secrets/README.md) (mise en route). *Reprise du projet par une autre personne* : `.sops.yaml` contient la clé publique de l'auteur et `secrets/` ses fichiers chiffrés, que seule sa clé privée déchiffre. Il faut donc supprimer `secrets/staging/` et `secrets/production/`, lancer `scripts/secrets.sh keygen` (remplace la clé publique dans `.sops.yaml`), puis `init` et `set` pour chaque valeur.
-3. **Paramètres SSM** (une fois, à la main) : la clé privée age (`/cyberlab-aws/age-key`) et la clé d'authentification Tailscale (`/cyberlab-aws/tailscale-authkey`). → [terraform/README.md](terraform/README.md) §2 et §3
-4. **Réglages côté NAS** (une fois) : tag et ACL Tailscale, récepteur `remote_write` sur Prometheus, règles d'alerte. → [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md)
-5. **Créer l'infrastructure** : copier `terraform.tfvars.example` (ignoré par git) dans `terraform/main`, puis :
+1. **Secrets** (une fois) : `scripts/secrets.sh keygen`, `init`, `set` → [docs/secrets.md](docs/secrets.md)
+2. **Paramètres SSM** (une fois) : clé age et clé Tailscale → [docs/terraform.md](docs/terraform.md)
+3. **Infrastructure** :
    ```bash
    cd terraform/main
-   terraform init
-   terraform plan                # relire avant d'appliquer
-   terraform apply               # ⚠ crée des ressources facturées
+   cp terraform.tfvars.example terraform.tfvars
+   terraform init && terraform plan
+   terraform apply        # ⚠ crée des ressources facturées
    ```
-   L'instance s'installe seule : K3s, Argo CD, secrets, Tailscale, puis le déploiement par Git. Le script de démarrage dure environ 3 minutes ; avec la création AWS et le démarrage des pods, compter une dizaine de minutes au plus avant que tout soit `Healthy`.
-6. **Vérifier** : sur l'instance, `sudo kubectl -n argocd get applications` doit montrer les 3 applications `Synced` et `Healthy` (commandes détaillées dans [docs/test-reconstruction.md](docs/test-reconstruction.md)).
+4. **Vérifier** : `sudo kubectl -n argocd get applications` sur l'instance → 3 applications `Synced`/`Healthy` (production attend le « Sync »).
+5. **Fin de démo** : `terraform -chdir=terraform/main destroy` (plus rien n'est facturé ; `t3.medium` ≈ 5 ct/h, budget avec alertes e-mail).
 
-### Fin de démonstration
+## Exploiter
 
-```bash
-terraform -chdir=terraform/main destroy    # tout détruire (fin de démonstration : plus rien n'est facturé)
-```
-
-Coût : une `t3.medium` coûte environ 5 centimes de dollar par heure d'allumage (tarif à vérifier dans la console AWS) ; après un `destroy`, plus rien n'est facturé. Un budget mensuel avec alertes e-mail est créé par Terraform.
-
-## Exploiter le cyberlab
-
-| Besoin | Commande / page |
+| Besoin | Où |
 |---|---|
-| Mettre en production (depuis staging) | recopier le digest dans l'overlay production, via une PR, puis « Sync » dans Argo CD → [docs/gitops.md](docs/gitops.md) |
-| Revenir en arrière | `git revert` du commit de fusion, via une PR → [docs/gitops.md](docs/gitops.md) |
-| Voir l'état du déploiement | `sudo kubectl -n argocd get applications` (sur l'instance), ou l'interface Argo CD par tunnel SSH |
-| Déclencher une alerte pour la démonstration | [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) §5 |
-| Mettre à jour les images de staging | modifier le digest dans `k8s/cyberlab/overlays/staging/kustomization.yaml`, via une PR |
-| Reconstruire de zéro et vérifier | [docs/test-reconstruction.md](docs/test-reconstruction.md) |
-| Montrer Argo CD en soutenance (résilience d'un pod, selfHeal en staging, déploiement et rollback par Git) | [docs/gitops.md](docs/gitops.md), section « Démonstration pour la soutenance » |
+| Mettre en production, rollback, démo Argo CD | [docs/gitops.md](docs/gitops.md) |
+| Reconstruire de zéro | [docs/test-reconstruction.md](docs/test-reconstruction.md) |
+| Tester en local sans AWS | `k8s/kind/test.sh` (puis `--cleanup`) |
 
-## Structure du dépôt
+## Structure
 
 ```
-k8s/
-├── cyberlab/{base,overlays/{kind,staging,production}}   # 3 backends + 3 tunnels cloudflared
-├── monitoring/{base,overlays/{kind,aws}}                # Prometheus Agent, node-exporter, kube-state-metrics
-├── argocd/applications/                                 # les 3 Application Argo CD
-└── kind/                                                # faux NAS et scripts de test local
-terraform/main                                           # VPC, EC2, IAM, IP élastique, budget (mode d'emploi : terraform/README.md)
-secrets/                                                 # secrets chiffrés (SOPS + age) par environnement (explications : secrets/README.md)
-.sops.yaml                                               # règles de chiffrement SOPS et clé publique age
-.trivyignore                                             # règles Trivy ignorées, avec justification (node-exporter)
-.yamllint.yml                                            # règles yamllint de la CI
-scripts/
-├── bootstrap-node.sh                                    # cloud-init : K3s, Argo CD, secrets, Tailscale, Applications
-└── secrets.sh                                           # gestion des secrets chiffrés
-nas-monitoring/                                          # règles d'alerte pour le Prometheus du NAS
-ci/                                                      # scripts de la CI (rendu, signatures Cosign, secrets chiffrés)
-.github/workflows/                                       # ci.yml (pipeline)
-docs/                                                    # terraform, kubernetes, gitops, test de reconstruction, supervision NAS, notes de projet
-```
-
-Les trois backends ne gardent aucune donnée durable (jobs en mémoire, fichiers temporaires dans `/tmp`) : aucun volume n'est nécessaire.
-
-## Scripts et tests locaux
-
-| Script | Rôle | Lancé par |
-|---|---|---|
-| `scripts/secrets.sh` | gère les secrets chiffrés : `keygen`, `init`, `set`, `edit`, `check`, `apply` | toi, sur ton poste |
-| `scripts/bootstrap-node.sh` | installe K3s, Argo CD, Tailscale, déchiffre les secrets, crée les 3 applications | cloud-init, une seule fois |
-| `ci/render.sh` | rend chaque overlay Kustomize en un YAML complet (ce que le cluster recevra) | la CI |
-| `ci/verify-signatures.sh` | vérifie la signature Cosign de chaque image backend | la CI |
-| `ci/check-secrets-encrypted.sh` | refuse tout secret non chiffré par SOPS | la CI |
-| `k8s/kind/test.sh` | déploiement complet sur kind : `/health` des backends, séries de l'agent reçues par un faux NAS | la CI, ou toi |
-| `k8s/kind/check-agent-config.sh` | configuration du Prometheus Agent valide (`promtool`) | la CI, ou toi |
-
-Tests en local (Docker, [kind](https://kind.sigs.k8s.io/) et `kubectl` requis, aucun appel à AWS) :
-
-```bash
-k8s/kind/test.sh
-k8s/kind/test.sh --cleanup   # supprime le cluster de test
+terraform/main/     VPC, EC2, IAM, IP élastique, budget
+k8s/                cyberlab/{base,overlays/{kind,staging,production}} · monitoring/ · argocd/applications/ · kind/ (tests locaux)
+secrets/            secrets chiffrés (SOPS + age) par environnement
+scripts/            bootstrap-node.sh (cloud-init) · secrets.sh
+ci/                 scripts de la CI (rendu, Cosign, secrets chiffrés)
+.github/workflows/  ci.yml
+docs/               documentation
+nas-monitoring/     (annexe) règles d'alerte à copier sur le Prometheus du NAS
 ```
 
 ## Pipeline CI
 
-[`ci.yml`](.github/workflows/ci.yml) s'exécute sur chaque pull request et sur `main` (runners GitHub). Les trois checks sont obligatoires pour fusionner.
+[`ci.yml`](.github/workflows/ci.yml) tourne sur chaque pull request et sur `main`. Trois checks, à rendre obligatoires dans les règles de protection de `main` :
 
 | Étape | Contrôles |
 |---|---|
-| ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform (strict), promtool (configuration de l'agent), `terraform fmt` + `validate` |
-| ② Security | Gitleaks, signatures Cosign des backends, Trivy config sur Kubernetes et Terraform (HIGH/CRITICAL bloquants) |
-| ③ Tests (kind) | déploiement complet sur un cluster jetable (backends, tunnels, agent, faux NAS) |
+| ① Code Quality | yamllint, shellcheck, Kustomize + kubeconform, promtool, `terraform fmt` + `validate` |
+| ② Security | Gitleaks, Cosign, Trivy (Kubernetes et Terraform, HIGH/CRITICAL bloquants) |
+| ③ Tests (kind) | déploiement complet sur un cluster jetable |
 
 ## Documentation
 
-- [docs/terraform.md](docs/terraform.md) : ce que Terraform crée, où est le state, comment le lire
-- [docs/kubernetes.md](docs/kubernetes.md) : où sont les manifestes, overlays, tunnels, NetworkPolicies, du Git au cluster
-- [docs/secrets.md](docs/secrets.md) : comment les secrets sont gérés, version courte (détail : [secrets/README.md](secrets/README.md))
-- [docs/notes-projet.md](docs/notes-projet.md) : décisions, alternatives écartées, difficultés rencontrées
+- [docs/terraform.md](docs/terraform.md) : ressources, state, pas à pas
+- [docs/kubernetes.md](docs/kubernetes.md) : manifestes, overlays, NetworkPolicies
 - [docs/gitops.md](docs/gitops.md) : Argo CD, mise en production, rollback
-- [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`, et ce qui est contrôlé
-- [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) : Tailscale, récepteur Prometheus, règles, démonstration d'alerte
-- [terraform/README.md](terraform/README.md) : Terraform pas à pas
-- [secrets/README.md](secrets/README.md) : SOPS + age expliqué, démonstration
+- [docs/secrets.md](docs/secrets.md) : SOPS + age, démonstration, questions du jury
+- [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`
+- [docs/notes-projet.md](docs/notes-projet.md) : décisions et difficultés
+- Annexe, côté NAS : [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) (Tailscale, récepteur Prometheus, règles d'alerte)
