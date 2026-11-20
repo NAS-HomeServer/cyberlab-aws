@@ -1,5 +1,7 @@
 # Changements à appliquer sur le NAS (supervision d'AWS)
 
+> **À retenir** : annexe hors cœur DevOps ; ce sont les réglages à faire sur le NAS pour recevoir les métriques d'AWS (Tailscale, récepteur Prometheus, règles d'alerte).
+
 Ce document décrit ce qu'il faut appliquer **soi-même** côté NAS pour que le Prometheus du NAS reçoive et surveille le cyberlab AWS. Rien n'est modifié dans le dépôt `HomeServer-monitoring` depuis ici.
 
 ## Le flux
