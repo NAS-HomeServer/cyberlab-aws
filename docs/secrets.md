@@ -1,71 +1,140 @@
-# Les secrets : comment ils sont gérés
+# Secrets : SOPS + age, expliqué simplement
 
-Version courte. Le détail (mise en route, démonstration, questions du jury) est dans [secrets/README.md](../secrets/README.md).
+Côté Terraform, la politique IAM `age_key` ([iam.tf](../terraform/main/iam.tf)) autorise l'instance à lire **uniquement** les deux paramètres SSM (clé age, clé Tailscale). Terraform ne manipule jamais la clé elle-même.
 
 ## Le problème
 
-L'application a besoin de secrets (tokens des 6 tunnels Cloudflare, variables des backends). Or ce dépôt est **public** et Git garde tout l'historique : un secret écrit en clair y serait visible pour toujours.
+L'application a besoin de secrets : les tokens des 6 tunnels Cloudflare, la clé Gemini, les jetons internes des backends. Or ce dépôt est **public**, et Git garde tout l'historique pour toujours.
 
-## La solution : chiffrer les secrets, les mettre dans Git
+| Idée | Pourquoi elle ne marche pas |
+|---|---|
+| Écrire les secrets en clair dans Git | Visibles par tout le monde, définitivement |
+| Les garder seulement sur mon poste | `terraform apply` ne pourrait plus tout reconstruire seul : il faudrait les ressaisir à la main |
+| **Les mettre dans Git, mais chiffrés** | Le dépôt reste la source de vérité, et personne ne peut les lire sans la clé |
 
-- **age** crée une paire de clés : une clé **publique** (pour chiffrer, versionnée dans `.sops.yaml`) et une clé **privée** (pour déchiffrer, jamais dans le dépôt).
-- **SOPS** applique age à un fichier YAML : il chiffre les **valeurs** et laisse les **noms** lisibles. Dans une PR, on voit *quel* secret change, jamais sa valeur.
+C'est ce que font **SOPS** et **age**.
 
-Image : la clé publique est un cadenas ouvert que tout le monde peut fermer ; seule la clé privée l'ouvre.
+## Les deux outils
 
-Les fichiers chiffrés sont dans `secrets/staging/` et `secrets/production/` (5 par environnement, `*.sops.yaml`).
+- **age** est un outil de chiffrement. Il crée une **paire de clés** :
+  - la **clé publique** (`age1…`) sert à *chiffrer*. Elle n'est pas secrète, elle est dans `.sops.yaml` et versionnée ;
+  - la **clé privée** sert à *déchiffrer*. Elle reste chez moi et n'entre jamais dans le dépôt.
+
+  Image : la clé publique est un cadenas ouvert que tout le monde peut fermer ; seule la clé privée l'ouvre.
+- **SOPS** est l'outil qui applique age à un fichier YAML : il chiffre les **valeurs** et laisse les **noms** lisibles.
+
+## À quoi ressemble un secret dans le dépôt
+
+Extrait réel de `secrets/production/cloudflared-dns.sops.yaml` (le bloc chiffré est raccourci) :
+
+```yaml
+apiVersion: v1
+kind: Secret                       # lisible
+metadata:
+    name: cloudflared-dns          # lisible
+    namespace: cyberlab-production # lisible
+stringData:
+    TUNNEL_TOKEN: ENC[AES256_GCM,data:DtgjqK9rzuoV/oGPaPixt/G4QeQ…,type:str]   # illisible
+sops:
+    age:
+        - recipient: age1xkgfzm20xxt20mmzyfzdsucfugs0e7epfgf3d8jxqxg05x35fvxskrfqn0
+```
+
+Seules les valeurs sont chiffrées (`encrypted_regex` dans `.sops.yaml`). Dans une pull request, on voit donc *quel* secret change, sans jamais voir sa valeur.
 
 ## Le trajet d'un secret
 
 ```
- MON POSTE                     GIT (public)              L'INSTANCE AWS
- scripts/secrets.sh set ─────▶ secrets/*.sops.yaml ────▶ script de démarrage
- (chiffre avec la clé          (valeurs illisibles)       ├─ lit la clé privée dans AWS SSM
-  publique)                         │                     ├─ déchiffre avec SOPS
-                               la CI refuse               ├─ crée les Secrets Kubernetes
-                               tout fichier en clair      └─ supprime la clé du disque
+ MON POSTE                          GIT (public)                 L'INSTANCE AWS
+ scripts/secrets.sh set  ──chiffre──▶ secrets/*.sops.yaml  ──────▶ bootstrap-node.sh
+ (clé PUBLIQUE age)                   (illisible)                   │
+                                           │                        ├─ lit la clé PRIVÉE dans AWS SSM
+                                      la CI refuse                  ├─ déchiffre (sops)
+                                      tout fichier non chiffré      ├─ kubectl apply → Secrets Kubernetes
+                                      (+ Gitleaks)                  └─ supprime la clé du disque
 ```
 
-1. **Je chiffre** sur mon poste : `scripts/secrets.sh set <env> <fichier> <CLE>` (saisie masquée).
-2. **Je commite** le fichier chiffré. La CI vérifie que rien n'est en clair (`ci/check-secrets-encrypted.sh`) et lance Gitleaks.
-3. **À la reconstruction**, le script de démarrage de l'instance récupère la clé privée dans AWS Systems Manager, déchiffre, crée les Secrets Kubernetes, puis **efface la clé** de son disque.
+1. **Je chiffre** sur mon poste : `scripts/secrets.sh set` demande la valeur (saisie masquée) et l'écrit chiffrée dans le fichier.
+2. **Je commite** le fichier chiffré. La CI vérifie qu'aucun fichier de `secrets/` n'est en clair (`ci/check-secrets-encrypted.sh`) et lance Gitleaks.
+3. **À la reconstruction**, l'instance récupère la clé privée dans AWS Systems Manager (créée une fois à la main, hors Terraform), déchiffre les fichiers, crée les Secrets Kubernetes, puis **efface la clé** de son disque.
 
-Résultat : `terraform apply` reconstruit tout sans que personne ne retape un secret.
-
-**En une phrase** : la clé age est la clé privée qui permet de déchiffrer les secrets SOPS ; elle est stockée à la main dans AWS SSM, et l'instance EC2 la lit au démarrage (grâce à son ARN dans la politique IAM) pour les ouvrir dans le cluster.
-
-**L'autorisation, côté Terraform** : la politique IAM `age_key` ([terraform/main/iam.tf](../terraform/main/iam.tf)) donne au rôle de l'instance le droit de lire **uniquement** le paramètre `arn:aws:ssm:<région>:<compte>:parameter/cyberlab-aws/age-key`. Terraform crée cette permission, mais ne manipule jamais la clé elle-même.
+Résultat : `terraform apply` reconstruit tout sans que personne ne tape un secret.
 
 ## Où vit chaque secret
 
-En bref : les secrets applicatifs sont dans Git **chiffrés** ; la clé privée age et la clé Tailscale sont dans AWS SSM (créées à la main, hors Terraform) ; la clé AWS reste sur le poste ; le kubeconfig reste sur l'instance. Le rôle IAM de l'instance ne lit **que ces deux paramètres SSM**.
+Le dépôt est public : la règle est qu'aucun secret n'y entre en clair, ni dans la CI.
 
-Le tableau complet (une ligne par secret, avec sa protection) est dans [secrets/README.md](../secrets/README.md#où-vit-chaque-secret), qui en est la **seule version de référence**.
+| Secret | Où il vit | Ce qui le protège |
+|---|---|---|
+| **Clé AWS** (pour `terraform apply`) | uniquement sur le poste (AWS CLI) | absente de GitHub : la CI ne parle jamais à AWS. `*.tfvars` et `*.tfstate` sont dans `.gitignore` |
+| **kubeconfig** | uniquement sur l'instance | absent de GitHub ; le port 6443 n'est pas ouvert ; Argo CD tire depuis Git, personne ne pousse vers le cluster |
+| **Secrets applicatifs** (tokens des tunnels, `.env` des backends) | dans Git, **chiffrés par SOPS + age** | la CI refuse tout fichier non chiffré ; seule la clé *publique* est versionnée |
+| **Clé privée age** | AWS Systems Manager Parameter Store (SecureString) | lue au premier démarrage puis supprimée du disque ; jamais dans le dépôt, ni dans `user_data`, ni dans l'état Terraform |
+| **Clé d'authentification Tailscale** | Parameter Store, créée à la main | même chemin que la clé age |
+| **Accès Argo CD → Git, registre d'images** | aucun | dépôt et images publics ; la signature Cosign est vérifiée sans clé |
 
-## Pourquoi le kubeconfig n'est pas dans les paramètres Git
+L'instance lit ses deux paramètres grâce à un rôle IAM qui n'autorise que `ssm:GetParameter` sur ces deux noms (`terraform/main/iam.tf`). Un pod compromis ne peut pas utiliser ce rôle : l'accès aux métadonnées AWS est durci (IMDSv2, `hop limit = 1`).
 
-Beaucoup de cours le stockent dans les secrets de la CI (GitHub/GitLab) pour que la CI déploie. C'est une mauvaise pratique, et ce projet l'évite :
+La CI n'utilise aucun secret, ne demande que `permissions: contents: read` et tourne sur des runners GitHub jetables, jamais auto-hébergés. Le jour où un `terraform plan` y sera ajouté, il faudra une authentification OIDC GitHub → AWS avec un rôle en lecture seule, sans clé stockée.
 
-- **Droits trop larges** : c'est un identifiant d'admin du cluster, sans expiration. Qui le lit contrôle tout.
-- **Surface d'attaque** : la CI devrait joindre l'API Kubernetes (6443), donc il faudrait l'ouvrir sur Internet.
-- **Fuite facile** : logs, PR de forks, workflow modifié, action tierce compromise. La CI devient une porte d'entrée vers le cluster.
+## Pourquoi le kubeconfig n'est pas dans la CI
 
-Ici, le modèle est *pull* : le kubeconfig reste sur l'instance (`/etc/rancher/k3s/k3s.yaml`), le port 6443 est fermé, et Argo CD tire depuis Git. Personne ne pousse vers le cluster, donc il n'y a rien à stocker côté Git.
+Beaucoup de cours le stockent dans les secrets de la CI pour qu'elle déploie. C'est une mauvaise pratique : identifiant d'admin sans expiration, port 6443 à ouvrir sur Internet, fuite facile (logs, forks, action tierce compromise). Ici le modèle est *pull* : le kubeconfig reste sur l'instance, le port 6443 est fermé, Argo CD tire depuis Git, donc il n'y a rien à stocker côté CI.
 
-Si la CI devait un jour parler au cluster : un ServiceAccount aux droits minimaux, un token à durée courte (ou OIDC), et un accès privé (Tailscale), jamais le kubeconfig admin.
+## Utiliser SOPS + age (sur le poste)
 
-## Ce qu'il faut savoir
-
-- **Argo CD ne gère pas les secrets** : le script de démarrage les applique une fois. Modifier un secret demande donc `scripts/secrets.sh apply`, pas seulement un `git push`.
-- **Perdre la clé privée = perdre les secrets chiffrés.** D'où une sauvegarde dans un gestionnaire de mots de passe **et** dans SSM. Il faudrait alors régénérer une clé et ressaisir les valeurs.
-- **Limites assumées** : la clé privée est un point unique à protéger, pas de rotation automatique, et dans le cluster les Secrets Kubernetes ne sont pas chiffrés dans la base de K3s (le disque, lui, est chiffré).
-
-## Les commandes utiles
+### Mise en route, une seule fois
 
 ```bash
-scripts/secrets.sh keygen                       # une fois : crée la paire de clés
-scripts/secrets.sh init staging                 # crée les fichiers chiffrés depuis les modèles
-scripts/secrets.sh set staging dns-analyzer-env INTERNAL_API_TOKEN   # renseigne une valeur
-scripts/secrets.sh check staging                # compte les CHANGEME restants (0 = prêt)
-scripts/secrets.sh apply staging                # déchiffre et applique dans le cluster
+brew install age sops
+scripts/secrets.sh keygen            # crée la clé privée et écrit la clé publique dans .sops.yaml
+#  >>> sauvegarder ~/.config/sops/age/keys.txt dans un gestionnaire de mots de passe
+scripts/secrets.sh init staging      # crée secrets/staging/*.sops.yaml depuis secrets/templates/
+scripts/secrets.sh init production
 ```
+
+### Renseigner ou modifier une valeur
+
+```bash
+scripts/secrets.sh set staging cloudflared-sherlock TUNNEL_TOKEN --clipboard   # copier le token, puis lancer
+scripts/secrets.sh set staging dns-analyzer-env INTERNAL_API_TOKEN              # sinon : saisie masquée
+scripts/secrets.sh edit staging dns-analyzer-env                                # ou tout le fichier dans $EDITOR
+```
+
+`set` renseigne une valeur à la fois, sans éditeur : avec `--clipboard`, il lit le presse-papiers puis le vide ; sans, il demande la valeur en saisie masquée (collez avec Cmd+V, rien ne s'affiche).
+
+`secrets/templates/` liste les variables attendues pour chaque Secret (déduites du code des backends) : les comparer au `.env` de chaque backend sur le NAS. Staging et production ont **chacun leurs tunnels** (tokens distincts de ceux du NAS), à créer dans le tableau de bord Cloudflare avant de remplir les fichiers.
+
+### Vérifier
+
+```bash
+scripts/secrets.sh check staging     # nombre de CHANGEME restants par fichier : 0 partout = prêt
+scripts/secrets.sh apply staging     # déchiffre et applique dans le namespace cyberlab-staging (kind ou cluster existant)
+```
+
+## Démonstration pour le jury (30 secondes)
+
+```bash
+# 1. Ce que voit n'importe qui sur GitHub : les valeurs sont illisibles
+cat secrets/production/cloudflared-dns.sops.yaml
+
+# 2. Ce que voit le propriétaire de la clé privée : les valeurs en clair
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops --decrypt secrets/production/cloudflared-dns.sops.yaml
+
+# 3. Sans la clé privée, le déchiffrement échoue
+SOPS_AGE_KEY_FILE=/dev/null sops --decrypt secrets/production/cloudflared-dns.sops.yaml
+```
+
+(Attention : la commande 2 affiche un vrai token, à ne pas lancer devant un écran partagé sans précaution.)
+
+## Questions probables
+
+| Question | Réponse |
+|---|---|
+| Pourquoi pas les Secrets Kubernetes seuls dans Git ? | Ils ne sont qu'encodés en base64, pas chiffrés : n'importe qui les décode. |
+| Pourquoi pas AWS Secrets Manager ou Vault ? | Un service de plus à payer et à maintenir, et les secrets ne seraient plus dans Git, donc plus reconstruits depuis lui. |
+| Pourquoi pas un plugin SOPS dans Argo CD (KSOPS) ? | C'est le vrai GitOps pour les secrets, mais il faut modifier l'image du `repo-server` et maintenir un plugin. Ici un script déchiffre une fois au démarrage. Contrepartie : modifier un secret demande de relancer `secrets.sh apply`, pas seulement un `git push`. |
+| Et si quelqu'un vole le dépôt ? | Il n'a que des valeurs chiffrées. Sans la clé privée, elles sont inutilisables. |
+| Et si je perds la clé privée ? | Les fichiers chiffrés sont irrécupérables. Il faut générer une nouvelle clé, refaire `init` et ressaisir les secrets (les tokens Cloudflare se régénèrent). C'est pourquoi la clé est sauvegardée dans un gestionnaire de mots de passe **et** dans AWS SSM. |
+
+**Limites assumées** : la clé privée est un point unique à protéger ; une fois dans le cluster, les Secrets Kubernetes ne sont pas chiffrés dans la base de K3s (le disque EBS, lui, est chiffré) ; pas de rotation automatique des clés.

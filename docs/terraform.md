@@ -2,8 +2,6 @@
 
 Cette page répond à deux questions : **qu'est-ce que Terraform crée sur AWS**, et **où est son *state* (état)** ? Pour la partie Kubernetes, voir [kubernetes.md](kubernetes.md).
 
-Détails complémentaires : [terraform/README.md](../terraform/README.md) (mode d'emploi pas à pas).
-
 ## Vue d'ensemble
 
 ```
@@ -79,11 +77,7 @@ terraform output                            # les sorties (IP publique, etc.)
 terraform plan                              # écart entre le code, le state et AWS
 ```
 
-### Lire un state vide
-
-Après un `terraform destroy`, `terraform.tfstate` est **vide** (0 ressource) : c'est normal, cela signifie « rien n'existe, rien n'est facturé ». `terraform.tfstate.backup` garde l'état juste avant la destruction. Un `terraform apply` recrée tout et remplit le fichier ; `terraform state list` indique à tout moment ce qui est suivi.
-
-> Le state **survit** à `terraform destroy` (il est simplement vidé). C'est ce qui permet de détruire en fin de démonstration puis de reconstruire à l'identique.
+Après un `terraform destroy`, le state est **vide** (0 ressource) : c'est normal, rien n'existe et rien n'est facturé. Le fichier survit au `destroy`, ce qui permet de reconstruire à l'identique (`terraform.tfstate.backup` garde l'état juste avant).
 
 ## Ce qui est hors Terraform (volontairement)
 
@@ -96,25 +90,48 @@ Deux paramètres **AWS Systems Manager** (SecureString), créés à la main, une
 
 Le rôle IAM n'a le droit de lire **que ces deux paramètres**.
 
-## Commandes courantes
+## Pas à pas
+
+Prérequis : Terraform ≥ 1.10, AWS CLI configuré (région `eu-west-3` par défaut), une clé SSH dédiée (`ssh-keygen -t ed25519 -f ~/.ssh/cyberlab-aws`).
+
+**1. Paramètres SSM, une seule fois, à la main** (hors Terraform, donc jamais détruits par `destroy`) :
+
+```bash
+aws --region eu-west-3 ssm put-parameter --name /cyberlab-aws/age-key --type SecureString \
+  --value "$(cat ~/.config/sops/age/keys.txt)"
+# idem pour /cyberlab-aws/tailscale-authkey (voir changements-nas-monitoring.md §1).
+# Sans ce second paramètre, l'instance démarre mais la supervision ne remonte pas au NAS.
+```
+
+**2. Créer l'infrastructure**
 
 ```bash
 cd terraform/main
-terraform init                 # une fois : télécharge le fournisseur AWS
-terraform plan                 # prévisualise, ne change rien
-terraform apply                # ⚠ crée des ressources facturées
-terraform output public_ip     # IP à utiliser pour SSH
-terraform destroy              # supprime tout (le state est conservé, vidé)
+cp terraform.tfvars.example terraform.tfvars   # clé publique, votre IP en /32, e-mail du budget
+terraform init
+terraform plan                                 # relire : rien ne doit être détruit par surprise
+terraform apply                                # ⚠ crée des ressources facturées
+terraform output public_ip                     # IP pour SSH
 ```
 
-Points à savoir : `user_data_replace_on_change = true` (modifier le script de démarrage (`scripts/bootstrap-node.sh`) ou ses paramètres **recrée** l'instance : l'état voulu est toujours celui du dépôt) et `ignore_changes = [ami]` (une nouvelle image Ubuntu ne remplace pas l'instance existante).
+**3. Vérifier** (le script de démarrage dure environ 3 minutes) :
 
-## Aide-mémoire
+```bash
+ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform output -raw public_ip)
+sudo cloud-init status --wait                      # "status: done"
+sudo tail -5 /var/log/cyberlab-bootstrap.log       # "Bootstrap termine."
+sudo kubectl -n argocd get applications            # staging et monitoring Synced/Healthy ; production OutOfSync jusqu'au « Sync »
+```
 
-| Je cherche… | C'est là |
-|---|---|
-| Le state | `terraform/main/terraform.tfstate` (local, hors Git) ; `terraform state list` |
-| L'ancien state | `terraform/main/terraform.tfstate.backup` |
-| Ce que Terraform crée | `terraform/main/*.tf` |
-| Mes réglages | `terraform/main/terraform.tfvars` (hors Git) |
-| Le script de démarrage de l'instance | `scripts/bootstrap-node.sh` |
+**4. Fin de démonstration** : `terraform destroy` supprime tout (l'IP élastique est libérée ; le state et les paramètres SSM sont conservés).
+
+Ce que fait le script `scripts/bootstrap-node.sh` : paquets, SOPS, K3s (sans traefik ni servicelb), Argo CD, clonage du dépôt, lecture de la clé age dans SSM puis `secrets.sh apply` et suppression de la clé du disque, Tailscale, création des 3 `Application` Argo CD. Chaque téléchargement est épinglé par version **et** SHA-256. Pour tester une branche avant fusion : `repo_ref = "ma-branche"` dans `terraform.tfvars`.
+
+Points à savoir : `user_data_replace_on_change = true` (modifier le script ou ses paramètres **recrée** l'instance : l'état voulu est toujours celui du dépôt) et `ignore_changes = [ami]` (une nouvelle image Ubuntu ne remplace pas l'instance). `t3.medium` (4 Go) : K3s, Argo CD, les 13 pods et la supervision ne tiennent pas dans les 2 Go d'une `t3.small`.
+
+## Choix de sécurité à connaître
+
+- **Aucun port entrant public** : SSH (22) n'est ouvert que depuis `ssh_allowed_cidrs` (`0.0.0.0/0` refusé par une validation) ; liste vide = accès par Session Manager seulement. Le trafic des backends arrive par des tunnels cloudflared **sortants**.
+- **Sorties ouvertes** (choix assumé, voir [notes-projet.md](notes-projet.md)) : sherlock et dns-analyzer interrogent des cibles choisies par l'utilisateur.
+- **IMDSv2 obligatoire, hop limit 1** : un pod ne peut pas lire les métadonnées de l'instance (vol d'identifiants par SSRF).
+- **Disque chiffré**, state jamais commité, **pas de NAT Gateway** (≈ 35 $/mois).

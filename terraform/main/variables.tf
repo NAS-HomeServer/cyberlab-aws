@@ -5,7 +5,7 @@ variable "region" {
 }
 
 variable "instance_type" {
-  description = "Type d'instance EC2 (x86 : les images des backends ne sont publiees qu'en amd64). t3.medium : K3s, Argo CD et les 12 pods ne tiennent pas dans les 2 Go d'une t3.small."
+  description = "Type d'instance EC2 (x86 : les images des backends ne sont publiees qu'en amd64). t3.medium : K3s, Argo CD et les 13 pods ne tiennent pas dans les 2 Go d'une t3.small."
   type        = string
   default     = "t3.medium"
   validation {
