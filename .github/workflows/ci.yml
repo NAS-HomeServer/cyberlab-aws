@@ -1,5 +1,11 @@
 name: CI
 
+# Titre distinct par exécution dans l'onglet Actions : événement, PR ou branche, commit court.
+run-name: >-
+  CI · ${{ github.event_name == 'pull_request'
+  && format('PR #{0} · {1} · {2}', github.event.pull_request.number, github.event.pull_request.title, substring(github.event.pull_request.head.sha, 0, 7))
+  || format('{0} · {1} · {2}', github.event_name, github.ref_name, substring(github.sha, 0, 7)) }}
+
 # Validation des manifestes Kubernetes AVANT toute mise en production : la prod
 # (ArgoCD) ne suit que ce qui a passe ces trois etapes sur main.
 #   ① Code Quality : yamllint, shellcheck, kubeconform, promtool, terraform fmt/validate
