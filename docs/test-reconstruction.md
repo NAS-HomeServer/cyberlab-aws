@@ -14,7 +14,7 @@ L'IP publique change après un destroy (nouvelle IP élastique) : sans conséque
 
 ## Avant de commencer
 
-- `terraform/main/terraform.tfvars` présent (voir [terraform/README.md](../terraform/README.md)) et le fichier `terraform.tfstate` de la dernière exécution, sur le même poste : sans lui, Terraform ne retrouve pas ce qu'il a créé.
+- `terraform/main/terraform.tfvars` présent (voir [terraform.md](terraform.md)) et le fichier `terraform.tfstate` de la dernière exécution, sur le même poste : sans lui, Terraform ne retrouve pas ce qu'il a créé.
 - Les deux paramètres SSM existent : `aws --region eu-west-3 ssm describe-parameters --query 'Parameters[].Name'`.
 - Clé Tailscale non expirée (90 jours maximum, voir [changements-nas-monitoring.md](changements-nas-monitoring.md) §1).
 - `main` contient tout ce qu'on veut tester : le script de démarrage clone `repo_ref` (`main` par défaut).

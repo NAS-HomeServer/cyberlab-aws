@@ -1,5 +1,5 @@
 # Regles de chiffrement SOPS. La cle PUBLIQUE age ci-dessous peut etre versionnee ;
-# la cle privee, elle, reste chez vous (voir secrets/README.md). Generer les deux avec :
+# la cle privee, elle, reste chez vous (voir docs/secrets.md). Generer les deux avec :
 #   scripts/secrets.sh keygen
 creation_rules:
   - path_regex: ^secrets/(staging|production)/.*\.sops\.yaml$
