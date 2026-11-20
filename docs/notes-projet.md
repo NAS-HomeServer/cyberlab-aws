@@ -114,8 +114,9 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
 - **Outils en conteneurs épinglés par digest** ; actions GitHub épinglées par SHA de commit.
 - **Cosign dans la CI** : une image non signée par la CI de son dépôt n'atteint jamais Argo CD.
 - **Pas de job « Deploy »** : le déploiement est fait par Argo CD (GitOps), pas par la CI.
-- **Protection de `main`** : PR obligatoire, pas de force-push, les trois checks obligatoires. Sans
-  filtre de chemins, une PR qui ne touche que la documentation obtient aussi ses checks (quelques
+- **Pas de protection de `main`** : l'opérateur est seul sur ce dépôt, la règle est de tout passer par
+  une PR et d'attendre les trois checks verts, sans que GitHub l'impose (activable en deux minutes).
+  Sans filtre de chemins, une PR qui ne touche que la documentation obtient aussi ses checks (quelques
   minutes de CI en plus).
 - **Limite connue : la CI de ce dépôt ne scanne pas les images** (seulement les configurations). Un
   scan bloquant des images existantes aurait remonté des vulnérabilités HIGH/CRITICAL dès le premier

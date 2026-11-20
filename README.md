@@ -97,7 +97,7 @@ nas-monitoring/     (annexe) règles d'alerte à copier sur le Prometheus du NAS
 
 ## Pipeline CI
 
-[`ci.yml`](.github/workflows/ci.yml) tourne sur chaque pull request et sur `main`. Trois checks, à rendre obligatoires dans les règles de protection de `main` :
+[`ci.yml`](.github/workflows/ci.yml) tourne sur chaque pull request et sur `main`. Trois checks, que l'opérateur (seul sur ce dépôt) attend verts avant de fusionner :
 
 | Étape | Contrôles |
 |---|---|
