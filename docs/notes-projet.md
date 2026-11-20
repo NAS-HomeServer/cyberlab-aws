@@ -184,7 +184,7 @@ Terraform seul reconstruit alors tout : `terraform apply`, puis Argo CD synchron
 
 ## Étape 4 — Secrets chiffrés (SOPS + age)
 
-Explication complète et mode d'emploi : [secrets/README.md](../secrets/README.md).
+Explication complète et mode d'emploi : [secrets.md](secrets.md).
 
 ### Décisions
 

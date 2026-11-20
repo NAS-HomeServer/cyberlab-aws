@@ -2,7 +2,7 @@
 
 Cette page répond à : **où sont les manifestes** (fichiers YAML) de l'application, **que contiennent-ils**, et **comment arrivent-ils dans le cluster** ? Pour l'infrastructure AWS et le state, voir [terraform.md](terraform.md).
 
-Détails complémentaires : [gitops.md](gitops.md) (Argo CD, mise en production, rollback), [secrets/README.md](../secrets/README.md) (SOPS + age).
+Détails complémentaires : [gitops.md](gitops.md) (Argo CD, mise en production, rollback), [secrets.md](secrets.md) (SOPS + age).
 
 ## Quel Kubernetes
 
@@ -109,7 +109,7 @@ kubectl kustomize k8s/cyberlab/overlays/production    # ce que reçoit la produc
 kubectl kustomize k8s/monitoring/overlays/aws         # la supervision
 ```
 
-Et, sur l'instance (accès SSH, voir [terraform/README.md](../terraform/README.md)) :
+Et, sur l'instance (accès SSH, voir [terraform.md](terraform.md)) :
 
 ```bash
 sudo kubectl -n argocd get applications               # Synced / Healthy ?
