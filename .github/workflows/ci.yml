@@ -14,9 +14,8 @@ run-name: >-
 # Runners heberges par GitHub (pas le NAS) : le depot est public, donc jamais de runner
 # auto-heberge (il executerait le code des PR), et un cluster kind jetable y est
 # disponible sans toucher au NAS.
-# Pas de filtre de chemins : les trois checks sont obligatoires pour fusionner
-# (protection de main), une PR qui ne touche que la documentation doit donc les
-# obtenir aussi. Le cout est de quelques minutes de CI.
+# Pas de filtre de chemins : les trois checks sont attendus verts avant de fusionner,
+# une PR qui ne touche que la documentation doit donc les obtenir aussi. Le cout est de quelques minutes de CI.
 on:
   pull_request:
   push:
