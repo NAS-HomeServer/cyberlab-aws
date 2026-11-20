@@ -1,5 +1,7 @@
 # Kubernetes : ce qui est en place, simplement
 
+> **À retenir** : une base Kustomize commune et trois overlays (kind, staging, production) ; seul ce que Kustomize rend arrive dans le cluster.
+
 Cette page répond à : **où sont les manifestes** (fichiers YAML) de l'application, **que contiennent-ils**, et **comment arrivent-ils dans le cluster** ? Pour l'infrastructure AWS et le state, voir [terraform.md](terraform.md).
 
 Détails complémentaires : [gitops.md](gitops.md) (Argo CD, mise en production, rollback), [secrets.md](secrets.md) (SOPS + age).
