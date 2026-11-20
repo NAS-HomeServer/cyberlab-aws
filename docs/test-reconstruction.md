@@ -1,5 +1,7 @@
 # Test de reconstruction : `terraform destroy` puis `terraform apply`
 
+> **À retenir** : `terraform destroy` puis `apply` rétablit tout sans intervention manuelle ; ce test sert de preuve de reproductibilité.
+
 **Ce que ce test prouve** : toute l'infrastructure se reconstruit à partir de rien, **sans aucune intervention manuelle**, et le cyberlab fonctionne à nouveau (backends, tunnels, supervision sur le NAS). C'est la preuve que Git + Terraform décrivent *vraiment* l'infrastructure.
 
 ## Ce qui est détruit, ce qui reste
