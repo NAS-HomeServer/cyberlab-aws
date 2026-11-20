@@ -1,5 +1,7 @@
 # Secrets : SOPS + age, expliqué simplement
 
+> **À retenir** : les secrets sont chiffrés dans Git (SOPS + age), la clé privée vit dans AWS SSM et l'instance la supprime de son disque après usage.
+
 Côté Terraform, la politique IAM `age_key` ([iam.tf](../terraform/main/iam.tf)) autorise l'instance à lire **uniquement** les deux paramètres SSM (clé age, clé Tailscale). Terraform ne manipule jamais la clé elle-même.
 
 ## Le problème

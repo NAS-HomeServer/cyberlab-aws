@@ -1,5 +1,7 @@
 # Notes de projet — migration du cyberlab vers AWS
 
+> **À retenir** : un seul cluster K3s et deux namespaces, par choix de coût ; chaque décision et chaque alternative écartée est justifiée ci-dessous.
+
 Décisions, alternatives écartées et difficultés rencontrées, par étape.
 
 ## Contexte et périmètre
