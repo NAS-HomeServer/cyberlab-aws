@@ -58,6 +58,24 @@ sudo kubectl get pods -A                         # backends et tunnels : Running
 
 Pour suivre le script de démarrage en direct pendant l'attente : `sudo tail -f /var/log/cyberlab-bootstrap.log`.
 
+## Se connecter à l'interface Argo CD
+
+Argo CD n'est pas exposé sur Internet : on y accède par un tunnel SSH. Deux commandes, à lancer **depuis la racine du dépôt** sur le poste.
+
+**1. Récupérer le mot de passe `admin`** (généré par Argo CD au premier démarrage) :
+
+```bash
+ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip) "sudo kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+```
+
+**2. Ouvrir le tunnel** (à laisser tourner dans ce terminal) :
+
+```bash
+ssh -i ~/.ssh/cyberlab-aws -L 8080:localhost:8080 ubuntu@$(terraform -chdir=terraform/main output -raw public_ip) "sudo kubectl -n argocd port-forward svc/argocd-server 8080:443"
+```
+
+Puis ouvrir <https://localhost:8080> (accepter l'avertissement du certificat auto-signé) et se connecter avec l'utilisateur `admin` et le mot de passe de l'étape 1. C'est aussi là que se fait le clic « Sync » de `cyberlab-production`.
+
 ## En cas d'échec
 
 | Symptôme | Où regarder |
