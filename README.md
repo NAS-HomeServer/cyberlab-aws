@@ -108,7 +108,7 @@ nas-monitoring/     (annexe) règles d'alerte à copier sur le Prometheus du NAS
 - [docs/terraform.md](docs/terraform.md) : ressources, state, pas à pas
 - [docs/kubernetes.md](docs/kubernetes.md) : manifestes, overlays, NetworkPolicies
 - [docs/gitops.md](docs/gitops.md) : Argo CD, mise en production, rollback
-- [docs/secrets.md](docs/secrets.md) : SOPS + age, démonstration, questions du jury
+- [docs/secrets.md](docs/secrets.md) : SOPS + age
 - [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`
 - [docs/notes-projet.md](docs/notes-projet.md) : décisions et difficultés
 - Annexe, côté NAS : [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) (Tailscale, récepteur Prometheus, règles d'alerte)
