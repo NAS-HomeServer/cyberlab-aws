@@ -113,30 +113,3 @@ scripts/secrets.sh edit staging dns-analyzer-env                                
 scripts/secrets.sh check staging     # nombre de CHANGEME restants par fichier : 0 partout = prêt
 scripts/secrets.sh apply staging     # déchiffre et applique dans le namespace cyberlab-staging (kind ou cluster existant)
 ```
-
-## Démonstration pour le jury (30 secondes)
-
-```bash
-# 1. Ce que voit n'importe qui sur GitHub : les valeurs sont illisibles
-cat secrets/production/cloudflared-dns.sops.yaml
-
-# 2. Ce que voit le propriétaire de la clé privée : les valeurs en clair
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops --decrypt secrets/production/cloudflared-dns.sops.yaml
-
-# 3. Sans la clé privée, le déchiffrement échoue
-SOPS_AGE_KEY_FILE=/dev/null sops --decrypt secrets/production/cloudflared-dns.sops.yaml
-```
-
-(Attention : la commande 2 affiche un vrai token, à ne pas lancer devant un écran partagé sans précaution.)
-
-## Questions probables
-
-| Question | Réponse |
-|---|---|
-| Pourquoi pas les Secrets Kubernetes seuls dans Git ? | Ils ne sont qu'encodés en base64, pas chiffrés : n'importe qui les décode. |
-| Pourquoi pas AWS Secrets Manager ou Vault ? | Un service de plus à payer et à maintenir, et les secrets ne seraient plus dans Git, donc plus reconstruits depuis lui. |
-| Pourquoi pas un plugin SOPS dans Argo CD (KSOPS) ? | C'est le vrai GitOps pour les secrets, mais il faut modifier l'image du `repo-server` et maintenir un plugin. Ici un script déchiffre une fois au démarrage. Contrepartie : modifier un secret demande de relancer `secrets.sh apply`, pas seulement un `git push`. |
-| Et si quelqu'un vole le dépôt ? | Il n'a que des valeurs chiffrées. Sans la clé privée, elles sont inutilisables. |
-| Et si je perds la clé privée ? | Les fichiers chiffrés sont irrécupérables. Il faut générer une nouvelle clé, refaire `init` et ressaisir les secrets (les tokens Cloudflare se régénèrent). C'est pourquoi la clé est sauvegardée dans un gestionnaire de mots de passe **et** dans AWS SSM. |
-
-**Limites assumées** : la clé privée est un point unique à protéger ; une fois dans le cluster, les Secrets Kubernetes ne sont pas chiffrés dans la base de K3s (le disque EBS, lui, est chiffré) ; pas de rotation automatique des clés.
