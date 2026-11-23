@@ -1,7 +1,5 @@
 # Cyberlab AWS
 
-> **À retenir** : un `terraform apply` crée l'infrastructure AWS, puis Argo CD déploie tout depuis Git ; la CI valide, la production se met à jour par pull request.
-
 Migration du **cyberlab** (3 backends `sherlock`, `dns-analyzer`, `audit-orchestrator`, chacun derrière un tunnel `cloudflared`) d'un NAS Synology vers **AWS**, en 2 environnements : `staging` et `production`.
 
 ## En bref
