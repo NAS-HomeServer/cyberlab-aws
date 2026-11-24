@@ -35,6 +35,7 @@ data "aws_iam_policy_document" "age_key" {
     resources = [
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.age_key_parameter}",
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.tailscale_authkey_parameter}",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.tailscale_oauth_parameter}",
     ]
   }
 }
