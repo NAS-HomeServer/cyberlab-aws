@@ -75,3 +75,9 @@ variable "tailscale_authkey_parameter" {
   type        = string
   default     = "/cyberlab-aws/tailscale-authkey"
 }
+
+variable "tailscale_oauth_parameter" {
+  description = "Nom du parametre SSM (SecureString, format client_id:client_secret) d'un client OAuth Tailscale (scope devices:core en ecriture). Facultatif : sert a supprimer l'ancien noeud cyberlab-aws a chaque reconstruction, pour n'avoir qu'une machine dans Tailscale."
+  type        = string
+  default     = "/cyberlab-aws/tailscale-oauth"
+}

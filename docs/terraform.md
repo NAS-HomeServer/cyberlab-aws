@@ -89,8 +89,9 @@ Deux paramètres **AWS Systems Manager** (SecureString), créés à la main, une
 |---|---|---|
 | `/cyberlab-aws/age-key` | clé privée age (déchiffre les secrets SOPS) | le script de démarrage de l'instance |
 | `/cyberlab-aws/tailscale-authkey` | clé Tailscale (lien privé vers le NAS) | le script de démarrage de l'instance |
+| `/cyberlab-aws/tailscale-oauth` | *(facultatif)* client OAuth Tailscale, pour supprimer l'ancien nœud | le script de démarrage de l'instance |
 
-Le rôle IAM n'a le droit de lire **que ces deux paramètres**.
+Le rôle IAM n'a le droit de lire **que ces paramètres**.
 
 ## Pas à pas
 

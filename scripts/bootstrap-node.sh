@@ -10,12 +10,15 @@
 #   AGE_PARAM            nom du parametre SSM SecureString qui contient la cle privee age
 #   TS_PARAM             nom du parametre SSM SecureString qui contient la cle d'authentification Tailscale
 #                        (optionnel : absent, l'instance demarre sans lien vers le NAS)
+#   TS_OAUTH_PARAM       (optionnel) parametre SSM "client_id:client_secret" d'un client OAuth Tailscale (scope
+#                        devices:core ecriture) : sert a supprimer les anciens noeuds cyberlab-aws avant de rejoindre
 #
 # Tout ce qui est telecharge est epingle par version ET verifie par empreinte SHA-256 :
 # une release modifiee apres coup fait echouer le bootstrap au lieu de s'executer.
 set -euo pipefail
 
 : "${REPO_URL:?}" "${REPO_REF:?}" "${AWS_REGION:?}" "${AGE_PARAM:?}" "${TS_PARAM:?}"
+TS_OAUTH_PARAM="${TS_OAUTH_PARAM:-}"
 
 K3S_VERSION="v1.33.13+k3s1"
 K3S_INSTALL_SHA256="9ca7930c31179d83bc13de20078fd8ad3e1ee00875b31f39a7e524ca4ef7d9de"
@@ -60,7 +63,7 @@ fetch() {
 
 log "1/8 Paquets de base"
 retry apt-get update -qq
-retry apt-get install -y -qq git curl ca-certificates
+retry apt-get install -y -qq git curl jq ca-certificates
 
 log "2/8 AWS CLI (lecture de la cle age dans SSM)"
 command -v aws > /dev/null || retry snap install aws-cli --classic
@@ -124,6 +127,32 @@ if ts_key="$(aws --region "$AWS_REGION" ssm get-parameter --name "$TS_PARAM" --w
   # La cle passe par un fichier (--auth-key=file:...), pas par la ligne de commande, pour ne pas
   # apparaitre dans la liste des processus. Sans cle valable, "tailscale up" attendrait une
   # connexion interactive indefiniment : le delai evite de bloquer tout le bootstrap.
+  # Une seule machine dans la console Tailscale : l'instance precedente (detruite) a laisse un noeud hors
+  # ligne qui ferait nommer celui-ci cyberlab-aws-1. On le supprime via l'API avant de rejoindre.
+  # Facultatif et jamais bloquant : sans client OAuth, ou en cas d'erreur, on continue (doublon cosmetique).
+  if [ -n "$TS_OAUTH_PARAM" ] && ts_oauth="$(aws --region "$AWS_REGION" ssm get-parameter --name "$TS_OAUTH_PARAM" --with-decryption --query Parameter.Value --output text 2> /dev/null)"; then
+    {
+      printf 'data-urlencode = "client_id=%s"\n' "${ts_oauth%%:*}"
+      printf 'data-urlencode = "client_secret=%s"\n' "${ts_oauth#*:}"
+    } > "$WORK/ts-oauth"
+    unset ts_oauth
+    if ts_token="$(curl -fsS --max-time 20 -X POST https://api.tailscale.com/api/v2/oauth/token -d grant_type=client_credentials -K "$WORK/ts-oauth" | jq -r .access_token)" && [ -n "$ts_token" ] && [ "$ts_token" != null ]; then
+      printf 'Authorization: Bearer %s\n' "$ts_token" > "$WORK/ts-hdr"
+      unset ts_token
+      if curl -fsS --max-time 20 -H @"$WORK/ts-hdr" https://api.tailscale.com/api/v2/tailnet/-/devices > "$WORK/ts-devices"; then
+        # Uniquement les noeuds etiquetes tag:cyberlab-aws et nommes cyberlab-aws[-N] : rien d'autre n'est touche.
+        for id in $(jq -r '.devices[] | select(.hostname | test("^cyberlab-aws(-[0-9]+)?$")) | select((.tags // []) | index("tag:cyberlab-aws")) | .id' "$WORK/ts-devices"); do
+          log "Tailscale : suppression de l'ancien noeud $id"
+          curl -fsS --max-time 20 -X DELETE -H @"$WORK/ts-hdr" "https://api.tailscale.com/api/v2/device/$id" || log "ATTENTION : suppression du noeud $id impossible."
+        done
+      else
+        log "ATTENTION : liste des noeuds Tailscale indisponible, anciens noeuds conserves."
+      fi
+    else
+      log "ATTENTION : jeton OAuth Tailscale refuse, anciens noeuds conserves."
+    fi
+    shred -u "$WORK/ts-oauth" "$WORK/ts-hdr" 2> /dev/null || true
+  fi
   ts_keyfile="$WORK/tskey"
   printf '%s' "$ts_key" > "$ts_keyfile"
   unset ts_key

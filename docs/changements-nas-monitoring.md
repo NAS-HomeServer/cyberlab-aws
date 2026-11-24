@@ -46,7 +46,15 @@ L'instance rejoint le réseau Tailscale (« tailnet ») du propriétaire au prem
    unset TSKEY
    ```
 
-À chaque `terraform destroy` puis `apply`, la nouvelle instance apparaît dans la console sous un nom en `-1`, `-2`… : les anciennes entrées hors ligne peuvent être supprimées.
+4. **Une seule machine dans la console (facultatif)** : sans cela, chaque `destroy` puis `apply` laisse l'ancien nœud hors ligne et le nouveau s'appelle `cyberlab-aws-1`, `-2`… (à supprimer à la main). Avec un client OAuth, le bootstrap supprime lui-même les anciens nœuds `cyberlab-aws*` portant `tag:cyberlab-aws` avant de rejoindre le réseau :
+   - console Tailscale → *Settings → OAuth clients* → créer un client avec le scope **Devices → Core : Write** (tag `tag:cyberlab-aws`) ;
+   - stocker `client_id:client_secret` :
+     ```bash
+     read -rs TSOAUTH   # coller : client_id:client_secret
+     aws --region eu-west-3 ssm put-parameter --name /cyberlab-aws/tailscale-oauth --type SecureString --value "$TSOAUTH"
+     unset TSOAUTH
+     ```
+   Absent ou refusé, le bootstrap continue sans rien supprimer. L'adresse `100.x` change à chaque reconstruction (le nœud est neuf) ; seul le nom reste `cyberlab-aws`.
 
 ## 2. Prometheus du NAS : activer le récepteur
 
