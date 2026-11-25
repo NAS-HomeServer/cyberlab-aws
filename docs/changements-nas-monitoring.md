@@ -47,7 +47,7 @@ L'instance rejoint le réseau Tailscale (« tailnet ») du propriétaire au prem
    ```
 
 4. **Une seule machine dans la console (facultatif)** : sans cela, chaque `destroy` puis `apply` laisse l'ancien nœud hors ligne et le nouveau s'appelle `cyberlab-aws-1`, `-2`… (à supprimer à la main). Avec un client OAuth, le bootstrap supprime lui-même les anciens nœuds `cyberlab-aws*` portant `tag:cyberlab-aws` avant de rejoindre le réseau :
-   - console Tailscale → *Settings → OAuth clients* → créer un client avec le scope **Devices → Core : Write** (tag `tag:cyberlab-aws`) ;
+   - console Tailscale → *Settings → Trust credentials* → *Add credential* → type **OAuth** (et non OIDC), scope **Devices → Core : Write**, tag `tag:cyberlab-aws` (déjà présent dans les `tagOwners` de la policy). Le `client_secret` n'est affiché qu'une fois ;
    - stocker `client_id:client_secret` :
      ```bash
      read -rs TSOAUTH   # coller : client_id:client_secret
