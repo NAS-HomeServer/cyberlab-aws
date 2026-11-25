@@ -1,5 +1,5 @@
 # Role de l'instance : AWS Systems Manager (acces de secours par Session Manager si SSH est
-# ferme ou injoignable) et lecture de DEUX parametres SSM precis (cle age, cle Tailscale ; voir plus bas).
+# ferme ou injoignable) et lecture des TROIS parametres SSM du demarrage (cle age, cle Tailscale, client OAuth ; voir plus bas).
 # Aucun droit sur S3, EC2 ni IAM :
 # un pod compromis qui atteindrait les metadonnees n'aurait rien d'exploitable
 # (et IMDSv2 avec hop limit 1 l'en empeche, voir compute.tf).
@@ -23,7 +23,7 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Lecture de la cle age et de la cle d'authentification Tailscale, et d'elles seules : le bootstrap
+# Lecture de la cle age, de la cle d'authentification Tailscale et du client OAuth : le bootstrap
 # en a besoin pour dechiffrer les secrets et rejoindre le reseau prive du NAS.
 # La cle est un SecureString chiffre par la cle AWS geree "aws/ssm", dont la politique autorise
 # deja le dechiffrement via SSM : aucun droit KMS a ajouter.

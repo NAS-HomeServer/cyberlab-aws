@@ -1,15 +1,15 @@
 # Test de reconstruction : `terraform destroy` puis `terraform apply`
 
-> **À retenir** : `terraform destroy` puis `apply` rétablit tout sans intervention manuelle ; ce test sert de preuve de reproductibilité.
+> **À retenir** : `terraform destroy` puis `apply` rétablit tout sans intervention manuelle (seule la production attend ensuite un clic « Sync ») ; ce test sert de preuve de reproductibilité.
 
-**Ce que ce test prouve** : toute l'infrastructure se reconstruit à partir de rien, **sans aucune intervention manuelle**, et le cyberlab fonctionne à nouveau (backends, tunnels, supervision sur le NAS). C'est la preuve que Git + Terraform décrivent *vraiment* l'infrastructure.
+**Ce que ce test prouve** : toute l'infrastructure se reconstruit à partir de rien, **sans aucune intervention manuelle**, et le cyberlab fonctionne à nouveau (backends, tunnels, supervision sur le NAS). Seule étape volontairement manuelle : le clic « Sync » qui déploie la production. C'est la preuve que Git + Terraform décrivent *vraiment* l'infrastructure.
 
 ## Ce qui est détruit, ce qui reste
 
 | Détruit par `terraform destroy` | Conservé (volontairement) |
 |---|---|
 | VPC, sous-réseau, groupe de sécurité, instance EC2, rôle IAM, IP élastique, budget | L'état Terraform local (`terraform/main/terraform.tfstate`, sur le poste) |
-| Tout le cluster K3s, Argo CD, les pods, les Secrets du cluster | Paramètres SSM `/cyberlab-aws/age-key` et `/cyberlab-aws/tailscale-authkey` (créés à la main, une fois) |
+| Tout le cluster K3s, Argo CD, les pods, les Secrets du cluster | Paramètres SSM `/cyberlab-aws/age-key`, `/cyberlab-aws/tailscale-authkey` et, facultatif, `/cyberlab-aws/tailscale-oauth` (créés à la main, une fois) |
 | | Le dépôt Git (source de vérité), la clé age sur le poste, la configuration du NAS |
 
 L'IP publique change après un destroy (nouvelle IP élastique) : sans conséquence, le trafic passe par les tunnels Cloudflare (connexions sortantes), et le NAS n'a besoin que de l'accès **de** l'instance **vers** lui.
@@ -17,7 +17,7 @@ L'IP publique change après un destroy (nouvelle IP élastique) : sans conséque
 ## Avant de commencer
 
 - `terraform/main/terraform.tfvars` présent (voir [terraform.md](terraform.md)) et le fichier `terraform.tfstate` de la dernière exécution, sur le même poste : sans lui, Terraform ne retrouve pas ce qu'il a créé.
-- Les deux paramètres SSM existent : `aws --region eu-west-3 ssm describe-parameters --query 'Parameters[].Name'`.
+- Les paramètres SSM existent (`age-key`, `tailscale-authkey` ; `tailscale-oauth` est facultatif) : `aws --region eu-west-3 ssm describe-parameters --query 'Parameters[].Name'`.
 - Clé Tailscale non expirée (90 jours maximum, voir [changements-nas-monitoring.md](changements-nas-monitoring.md) §1).
 - `main` contient tout ce qu'on veut tester : le script de démarrage clone `repo_ref` (`main` par défaut).
 
@@ -53,8 +53,8 @@ sudo kubectl get pods -A                         # backends et tunnels : Running
 | Contrôle | Prouve que |
 |---|---|
 | « Bootstrap termine » dans le journal | le script de démarrage est allé jusqu'au bout |
-| 3 applications Argo CD `Synced/Healthy` | Argo CD a lu Git et déployé staging, production et la supervision |
-| Pods `Running` dans `cyberlab-staging` et `cyberlab-production` | backends et tunnels tournent, secrets déchiffrés (SOPS) et appliqués |
+| `cyberlab-staging` et `monitoring` `Synced/Healthy`, `cyberlab-production` `OutOfSync` | Argo CD a lu Git, déployé staging et la supervision, et attend la validation pour la production |
+| Pods `Running` dans `cyberlab-staging`, puis dans `cyberlab-production` après « Sync » | backends et tunnels tournent, secrets déchiffrés (SOPS) et appliqués |
 
 Pour suivre le script de démarrage en direct pendant l'attente : `sudo tail -f /var/log/cyberlab-bootstrap.log`.
 

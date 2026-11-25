@@ -2,7 +2,7 @@
 
 > **À retenir** : les secrets sont chiffrés dans Git (SOPS + age), la clé privée vit dans AWS SSM et l'instance la supprime de son disque après usage.
 
-Côté Terraform, la politique IAM `age_key` ([iam.tf](../terraform/main/iam.tf)) autorise l'instance à lire **uniquement** les deux paramètres SSM (clé age, clé Tailscale). Terraform ne manipule jamais la clé elle-même.
+Côté Terraform, la politique IAM `age_key` ([iam.tf](../terraform/main/iam.tf)) autorise l'instance à lire les trois paramètres SSM du démarrage (clé age, clé Tailscale et, facultatif, client OAuth Tailscale). Terraform ne manipule jamais la clé elle-même.
 
 ## Le problème
 
@@ -75,7 +75,7 @@ Le dépôt est public : la règle est qu'aucun secret n'y entre en clair, ni dan
 | **Clé d'authentification Tailscale** | Parameter Store, créée à la main | même chemin que la clé age |
 | **Accès Argo CD → Git, registre d'images** | aucun | dépôt et images publics ; la signature Cosign est vérifiée sans clé |
 
-L'instance lit ses deux paramètres grâce à un rôle IAM qui n'autorise que `ssm:GetParameter` sur ces deux noms (`terraform/main/iam.tf`). Un pod compromis ne peut pas utiliser ce rôle : l'accès aux métadonnées AWS est durci (IMDSv2, `hop limit = 1`).
+L'instance lit ses trois paramètres grâce à son rôle IAM (`terraform/main/iam.tf`). Un pod compromis ne peut pas utiliser ce rôle : l'accès aux métadonnées AWS est durci (IMDSv2, `hop limit = 1`).
 
 La CI n'utilise aucun secret, ne demande que `permissions: contents: read` et tourne sur des runners GitHub jetables, jamais auto-hébergés. Le jour où un `terraform plan` y sera ajouté, il faudra une authentification OIDC GitHub → AWS avec un rôle en lecture seule, sans clé stockée.
 

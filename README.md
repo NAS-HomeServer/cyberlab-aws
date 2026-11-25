@@ -13,7 +13,7 @@ Migration du **cyberlab** (3 backends `sherlock`, `dns-analyzer`, `audit-orchest
 | Qualité / sécurité | **GitHub Actions** | lint, Gitleaks, Cosign, Trivy, test sur kind |
 | Supervision | **Prometheus Agent** | envoie les métriques au Prometheus du NAS par Tailscale |
 
-Mise en production : pull request (digest d'image) puis « Sync » ; retour arrière : `git revert`. Une instance neuve est prête en moins de 3 minutes (hors création AWS), et `terraform destroy` puis `apply` reconstruit tout sans intervention ([test de reconstruction](docs/test-reconstruction.md)).
+Mise en production : pull request (digest d'image) puis « Sync » ; retour arrière : `git revert`. Une instance neuve est prête en moins de 3 minutes (hors création AWS), et `terraform destroy` puis `apply` reconstruit tout sans intervention, la production attendant ensuite son clic « Sync » ([test de reconstruction](docs/test-reconstruction.md)).
 
 ## Architecture
 
@@ -61,7 +61,7 @@ Terraform ne parle jamais à Kubernetes. La CI ne lance ni `plan` ni `apply` : e
 Prérequis : Terraform ≥ 1.10, AWS CLI, [age](https://github.com/FiloSottile/age), [SOPS](https://github.com/getsops/sops) ; pour le test local, Docker + [kind](https://kind.sigs.k8s.io/) + `kubectl`.
 
 1. **Secrets** (une fois) : `scripts/secrets.sh keygen`, `init`, `set` → [docs/secrets.md](docs/secrets.md)
-2. **Paramètres SSM** (une fois) : clé age et clé Tailscale → [docs/terraform.md](docs/terraform.md)
+2. **Paramètres SSM** (une fois) : clé age, clé Tailscale et, facultatif, client OAuth Tailscale → [docs/terraform.md](docs/terraform.md)
 3. **Infrastructure** :
    ```bash
    cd terraform/main
@@ -69,7 +69,7 @@ Prérequis : Terraform ≥ 1.10, AWS CLI, [age](https://github.com/FiloSottile/a
    terraform init && terraform plan
    terraform apply        # ⚠ crée des ressources facturées
    ```
-4. **Vérifier** : `sudo kubectl -n argocd get applications` sur l'instance → 3 applications `Synced`/`Healthy` (production attend le « Sync »).
+4. **Vérifier** : `sudo kubectl -n argocd get applications` sur l'instance → `cyberlab-staging` et `monitoring` `Synced`/`Healthy` ; `cyberlab-production` reste `OutOfSync` jusqu'au clic « Sync ».
 5. **Fin de démo** : `terraform -chdir=terraform/main destroy` (plus rien n'est facturé ; `t3.medium` ≈ 5 ct/h, budget avec alertes e-mail).
 
 ## Exploiter
