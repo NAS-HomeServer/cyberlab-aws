@@ -2,7 +2,7 @@
 # Argo CD surveille le dossier `path` de ce depot, mais la PRODUCTION se deploie sur
 # validation humaine : apres la fusion, l'application passe OutOfSync et attend un clic sur
 # « Sync » (ou `argocd app sync`). Un git revert se deploie de la meme facon.
-# Seul le premier deploiement est declenche par scripts/bootstrap-node.sh.
+# scripts/bootstrap-node.sh ne declenche aucun deploiement de production, pas meme le premier.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

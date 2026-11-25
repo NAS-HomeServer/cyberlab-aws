@@ -16,9 +16,10 @@ resource "aws_instance" "node" {
   iam_instance_profile   = aws_iam_instance_profile.node.name
   key_name               = aws_key_pair.admin.key_name
 
-  # Bootstrap au premier demarrage (cloud-init) : K3s, Argo CD, secrets. Le script vit dans
-  # scripts/bootstrap-node.sh (verifiable par shellcheck) ; Terraform ne fait que le
-  # precedre de ses parametres. Aucun secret ici : seule la clef age est lue dans SSM, par l'instance.
+  # Bootstrap au premier demarrage (cloud-init) : K3s, Argo CD, secrets.
+  # user_data = les "export" ci-dessous (parametres), suivis du contenu de
+  # scripts/bootstrap-node.sh (fichier separe, verifiable par shellcheck).
+  # Aucun secret ici : seule la clef age est lue dans SSM, par l'instance.
   user_data = <<-EOT
     #!/usr/bin/env bash
     export REPO_URL='${var.repo_url}'

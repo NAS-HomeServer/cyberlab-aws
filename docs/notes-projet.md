@@ -148,7 +148,7 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
 - **Réseau** : 1 VPC, 1 sous-réseau public, pas de NAT Gateway (≈ 35 $/mois).
 - **Aucune entrée publique** : SSH limité à `ssh_allowed_cidrs` (jamais `0.0.0.0/0`, validation
   Terraform) ; liste vide = accès par Systems Manager uniquement. Le rôle IAM n'a que
-  `AmazonSSMManagedInstanceCore` et la lecture de deux paramètres SSM.
+  `AmazonSSMManagedInstanceCore` et la lecture de trois paramètres SSM.
 - **Sorties ouvertes** : sherlock sonde des centaines de sites, dns-analyzer interroge des serveurs DNS
   et des ports choisis par l'utilisateur, cloudflared exige 7844 (tcp/udp). Compromis : entrée fermée,
   sorties libres, contrôle fin par NetworkPolicies. L'exception Trivy est écrite à côté de la règle
@@ -222,7 +222,7 @@ puis création des 3 `Application` Argo CD. Le script passe dans shellcheck en C
 
 - **Un script plutôt qu'Ansible** : une exécution au premier démarrage suffit puisque l'instance est
   jetable. Le script est un fichier du dépôt (relisible), Terraform ne fait que le transmettre.
-- **Tout est épinglé et vérifié** : K3s, Argo CD, SOPS, Tailscale en version fixée **et** SHA-256
+- **Binaires et manifestes épinglés et vérifiés** (hors AWS CLI installé par `snap` et paquets `apt`) : K3s, Argo CD, SOPS, Tailscale en version fixée **et** SHA-256
   contrôlé. Une release modifiée après coup fait échouer le script de démarrage au lieu de s'exécuter.
 - **La clé age n'a pas besoin d'un droit KMS** : le SecureString est chiffré par la clé gérée `aws/ssm`,
   dont la politique autorise déjà le déchiffrement via SSM.
@@ -241,7 +241,7 @@ Mode d'emploi : [gitops.md](gitops.md).
 
 - **Trois `Application` Argo CD** (staging, production, supervision). Staging et supervision se
   synchronisent automatiquement (`prune`, `selfHeal`) ; **la production se déploie sur validation humaine**
-  (clic sur « Sync » après la fusion de la PR), le script de démarrage ne déclenchant que son premier déploiement.
+  (clic sur « Sync » après la fusion de la PR), le script de démarrage ne déclenchant aucun déploiement de production, pas même le premier.
   Les applications sont créées par le script de démarrage avec l'URL et la branche de Terraform (`repo_url`, `repo_ref`).
 - **Mise en production** : les digests de staging sont recopiés à la main vers production par une PR, relue et
   soumise aux 3 checks (dont la signature Cosign). La production ne reçoit jamais directement une image.

@@ -32,7 +32,7 @@ Un seul module : [terraform/main/](../terraform/main/). Chaque fichier a un rôl
 | [network.tf](../terraform/main/network.tf) | VPC `10.20.0.0/16`, passerelle Internet, 1 sous-réseau public, table de routage. **Pas de NAT Gateway** (≈ 35 $/mois) |
 | [security.tf](../terraform/main/security.tf) | Groupe de sécurité : **aucune entrée** sauf SSH depuis `ssh_allowed_cidrs` ; toutes les sorties ouvertes |
 | [compute.tf](../terraform/main/compute.tf) | Instance EC2 `t3.medium`, disque gp3 20 Go chiffré, clé SSH, IP élastique, script de démarrage (`user_data`) |
-| [iam.tf](../terraform/main/iam.tf) | Rôle IAM de l'instance : Systems Manager + lecture de 2 paramètres SSM seulement |
+| [iam.tf](../terraform/main/iam.tf) | Rôle IAM de l'instance : Systems Manager + lecture des 3 paramètres SSM du démarrage |
 | [budget.tf](../terraform/main/budget.tf) | Alerte e-mail à 80 % (réel) et 100 % (prévu) du budget mensuel |
 | [outputs.tf](../terraform/main/outputs.tf) | Valeurs affichées après `apply` : `instance_id`, `public_ip`, `ssh_user`, `region` |
 | [terraform.tfvars.example](../terraform/main/terraform.tfvars.example) | Modèle des réglages personnels (à copier en `terraform.tfvars`) |
@@ -83,7 +83,7 @@ Après un `terraform destroy`, le state est **vide** (0 ressource) : c'est norma
 
 ## Ce qui est hors Terraform (volontairement)
 
-Deux paramètres **AWS Systems Manager** (SecureString), créés à la main, une seule fois, donc **jamais dans le state** et jamais détruits par `destroy` :
+Trois paramètres **AWS Systems Manager** (le troisième est facultatif) (SecureString), créés à la main, une seule fois, donc **jamais dans le state** et jamais détruits par `destroy` :
 
 | Paramètre | Contenu | Lu par |
 |---|---|---|
@@ -91,7 +91,7 @@ Deux paramètres **AWS Systems Manager** (SecureString), créés à la main, une
 | `/cyberlab-aws/tailscale-authkey` | clé Tailscale (lien privé vers le NAS) | le script de démarrage de l'instance |
 | `/cyberlab-aws/tailscale-oauth` | *(facultatif)* client OAuth Tailscale, pour supprimer l'ancien nœud | le script de démarrage de l'instance |
 
-Le rôle IAM n'a le droit de lire **que ces paramètres**.
+La politique IAM `age_key` autorise la lecture de ces trois paramètres.
 
 ## Pas à pas
 
@@ -128,7 +128,7 @@ sudo kubectl -n argocd get applications            # staging et monitoring Synce
 
 **4. Fin de démonstration** : `terraform destroy` supprime tout (l'IP élastique est libérée ; le state et les paramètres SSM sont conservés).
 
-Ce que fait le script `scripts/bootstrap-node.sh` : paquets, SOPS, K3s (sans traefik ni servicelb), Argo CD, clonage du dépôt, lecture de la clé age dans SSM puis `secrets.sh apply` et suppression de la clé du disque, Tailscale, création des 3 `Application` Argo CD. Chaque téléchargement est épinglé par version **et** SHA-256. Pour tester une branche avant fusion : `repo_ref = "ma-branche"` dans `terraform.tfvars`.
+Ce que fait le script `scripts/bootstrap-node.sh` : paquets, SOPS, K3s (sans traefik ni servicelb), Argo CD, clonage du dépôt, lecture de la clé age dans SSM puis `secrets.sh apply` et suppression de la clé du disque, Tailscale, création des 3 `Application` Argo CD. K3s, Argo CD, SOPS et Tailscale sont épinglés par version **et** SHA-256 ; AWS CLI (`snap`) et les paquets `apt` ne le sont pas. Pour tester une branche avant fusion : `repo_ref = "ma-branche"` dans `terraform.tfvars`.
 
 Points à savoir : `user_data_replace_on_change = true` (modifier le script ou ses paramètres **recrée** l'instance : l'état voulu est toujours celui du dépôt) et `ignore_changes = [ami]` (une nouvelle image Ubuntu ne remplace pas l'instance). `t3.medium` (4 Go) : K3s, Argo CD, les 13 pods et la supervision ne tiennent pas dans les 2 Go d'une `t3.small`.
 

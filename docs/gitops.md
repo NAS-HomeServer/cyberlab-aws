@@ -94,7 +94,7 @@ Le mot de passe s'affiche sans retour à la ligne, collé juste avant l'invite d
 
 ### 4. Ce qu'on voit
 
-Les trois applications (`cyberlab-staging`, `cyberlab-production`, `monitoring`) en `Synced` et `Healthy`. Un clic sur une application ouvre l'arbre de ses ressources (Deployments, pods, Services). Le bouton **Refresh** force Argo CD à relire Git, utile pendant une démonstration.
+Les trois applications : `cyberlab-staging` et `monitoring` en `Synced` et `Healthy` ; `cyberlab-production` en `OutOfSync` sur une instance neuve, jusqu'au premier clic sur **Sync**. Un clic sur une application ouvre l'arbre de ses ressources (Deployments, pods, Services). Le bouton **Refresh** force Argo CD à relire Git, utile pendant une démonstration.
 
 Sans interface, l'état se lit en ligne de commande, sur l'instance : `sudo kubectl -n argocd get applications`.
 
@@ -104,7 +104,7 @@ Les trois exemples se font sur une instance démarrée et prennent environ 7 min
 
 ```bash
 ssh -i ~/.ssh/cyberlab-aws ubuntu@$(terraform -chdir=terraform/main output -raw public_ip)
-sudo kubectl -n argocd get applications     # les 3 applications doivent être Synced / Healthy
+sudo kubectl -n argocd get applications     # les 3 applications doivent être Synced / Healthy (instance neuve : faire d'abord « Sync » sur cyberlab-production)
 ```
 
 ### Exemple 1 : la résilience, un pod supprimé est recréé
