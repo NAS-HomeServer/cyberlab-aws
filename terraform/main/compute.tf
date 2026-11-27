@@ -9,6 +9,8 @@ resource "aws_key_pair" "admin" {
 }
 
 resource "aws_instance" "node" {
+  #checkov:skip=CKV_AWS_126:Supervision par Prometheus, pas de detail CloudWatch payant
+  #checkov:skip=CKV_AWS_135:Les instances t3 sont optimisees EBS par defaut
   ami                    = nonsensitive(data.aws_ssm_parameter.ubuntu_ami.value)
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id

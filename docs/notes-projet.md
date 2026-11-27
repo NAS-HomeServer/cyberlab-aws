@@ -66,8 +66,8 @@ Conséquences :
 - **Tunnels : un jeu par environnement, nouveaux tokens.** Réutiliser ceux du NAS répartirait le trafic
   réel entre le NAS et AWS.
 - **node-exporter** : seul composant qui exige `hostNetwork` + `hostPath`. Le namespace `monitoring`
-  est donc en Pod Security `privileged`, et deux règles Trivy sont ignorées avec justification
-  (`.trivyignore`). *Alternative écartée* : ne pas superviser l'hôte.
+  est donc en Pod Security `privileged`, et des exceptions Checkov justifiées sont
+  écrites sur la ressource. *Alternative écartée* : ne pas superviser l'hôte.
 - **Pas de Helm ni d'Operator** : manifestes simples, lisibles en soutenance.
 - **WAL de l'agent** : `emptyDir` plafonné (512 Mi), rétention 4 h. Il survit à un redémarrage du
   conteneur, pas à l'arrêt de l'instance (un `stop` du soir coupe aussi les métriques : voulu).
@@ -88,8 +88,7 @@ Conséquences :
 
 ### Validation (en local, sans AWS)
 
-`kubeconform -strict` sur 5 overlays ; `trivy config` sans finding HIGH/CRITICAL (hors les 2 règles
-node-exporter justifiées) ; `promtool check config` sur l'agent ; `k8s/kind/test.sh` : backends
+`kubeconform -strict` sur 5 overlays ; Checkov sans écart hors exceptions justifiées ; `promtool check config` sur l'agent ; `k8s/kind/test.sh` : backends
 joignables sur `/health`, tunnels exposant `/metrics`, séries de l'agent reçues par un faux NAS avec
 les bons labels. Un scan Sherlock réel sous `readOnlyRootFilesystem` a confirmé qu'il n'écrit rien
 en dehors de `/tmp`.
@@ -101,7 +100,7 @@ en dehors de `/tmp`.
 | Étape | Contrôles | Bloquant |
 |---|---|---|
 | ① Code Quality | yamllint, shellcheck, rendu Kustomize + kubeconform, promtool, `terraform fmt` + `validate` | oui |
-| ② Security | secrets chiffrés (SOPS), Gitleaks, signatures Cosign des images, Trivy config (Kubernetes et Terraform, HIGH/CRITICAL) | oui |
+| ② Security | secrets chiffrés (SOPS), Gitleaks, signatures Cosign des images, Checkov (Kubernetes et Terraform) | oui |
 | ③ Tests (kind) | déploiement complet sur un cluster jetable | oui |
 
 On valide ce que le cluster va réellement recevoir (la sortie de `kubectl kustomize`), pas les fichiers
@@ -112,6 +111,10 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
 - **Runners hébergés par GitHub, pas le runner du NAS** : le dépôt est public, un runner auto-hébergé
   y exécuterait le code des PR de forks. kind y est disponible et la CI ne dépend plus du NAS.
 - **Outils en conteneurs épinglés par digest** ; actions GitHub épinglées par SHA de commit.
+- **Checkov plutôt que Trivy** pour l'analyse IaC, par précaution après l'attaque de mars 2026 sur la
+  distribution de Trivy (CVE-2026-33634). La version libre de Checkov ne filtre pas par sévérité : tout
+  écart est bloquant, sauf exception écrite (`.checkov.yaml` ou sur la ressource). Les CI des 3 backends
+  utilisent encore Trivy.
 - **Cosign dans la CI** : une image non signée par la CI de son dépôt n'atteint jamais Argo CD.
 - **Pas de job « Deploy »** : le déploiement est fait par Argo CD (GitOps), pas par la CI.
 - **Pas de protection de `main`** : l'opérateur est seul sur ce dépôt, la règle est de tout passer par
@@ -151,8 +154,8 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
   `AmazonSSMManagedInstanceCore` et la lecture de trois paramètres SSM.
 - **Sorties ouvertes** : sherlock sonde des centaines de sites, dns-analyzer interroge des serveurs DNS
   et des ports choisis par l'utilisateur, cloudflared exige 7844 (tcp/udp). Compromis : entrée fermée,
-  sorties libres, contrôle fin par NetworkPolicies. L'exception Trivy est écrite à côté de la règle
-  (`#trivy:ignore`). À arbitrer avec le jury si la question est posée.
+  sorties libres, contrôle fin par NetworkPolicies. La justification est écrite à côté de la règle
+  (`security.tf`). À arbitrer avec le jury si la question est posée.
 - **IMDSv2 obligatoire, hop limit 1** : un pod ne peut pas lire les métadonnées de l'instance. Les
   backends effectuent des requêtes vers des cibles choisies par l'utilisateur (risque SSRF) : c'est la
   parade côté infrastructure.
@@ -164,8 +167,8 @@ sources : les `images:`/`digest:` des overlays n'existent que dans le rendu.
 ### Validation (aucun appel à AWS)
 
 `terraform fmt -check`, `init -backend=false` avec lockfile en lecture seule et `validate` (en local et
-dans la CI) ; Trivy config sans finding HIGH/CRITICAL. Finding connu et non traité : VPC Flow Logs
-(MEDIUM, coût et volume disproportionnés ici).
+dans la CI) ; Checkov sans écart hors exceptions justifiées. Exception connue : VPC Flow Logs
+(coût et volume disproportionnés ici).
 
 ### Difficulté rencontrée
 

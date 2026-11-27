@@ -24,7 +24,6 @@ resource "aws_vpc_security_group_ingress_rule" "ssh" {
 # arbitraires, cloudflared a besoin de 7844 (tcp/udp), l'agent de la liaison vers le
 # NAS (Tailscale : UDP 41641 ou 443). Filtrer les sorties casserait les fonctions des
 # backends ; le controle se fait cote entree (aucune) et par les NetworkPolicies.
-#trivy:ignore:AVD-AWS-0104
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.node.id
   description       = "Toutes les sorties (voir le commentaire ci-dessus)"

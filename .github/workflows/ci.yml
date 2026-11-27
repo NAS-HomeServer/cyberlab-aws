@@ -9,7 +9,7 @@ run-name: >-
 # Validation des manifestes Kubernetes AVANT toute mise en production : la prod
 # (ArgoCD) ne suit que ce qui a passe ces trois etapes sur main.
 #   ① Code Quality : yamllint, shellcheck, kubeconform, promtool, terraform fmt/validate
-#   ② Security     : gitleaks, signatures Cosign des backends, trivy config (K8s et Terraform)
+#   ② Security     : gitleaks, signatures Cosign des backends, Checkov (K8s et Terraform)
 #   ③ Tests (kind) : deploiement complet sur un cluster jetable
 # Runners heberges par GitHub (pas le NAS) : le depot est public, donc jamais de runner
 # auto-heberge (il executerait le code des PR), et un cluster kind jetable y est
@@ -35,7 +35,7 @@ env:
   KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c
   TERRAFORM_IMAGE: hashicorp/terraform:1.17.2@sha256:6e9c1e647c31a960dc9b59e13272f9111d90010c10b717f77ffb324767660475
   GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
-  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  CHECKOV_IMAGE: bridgecrew/checkov:3.4.3@sha256:bfe9d70bb7f044aba49bd99675813445f106dee6072da583f51008cb667f3a63
   # Version de Kubernetes validee par kubeconform (a aligner sur la version de K3s).
   KUBERNETES_VERSION: 1.33.0
 
@@ -100,15 +100,16 @@ jobs:
       - name: Rendu des overlays (kustomize)
         run: ci/render.sh "$RUNNER_TEMP/render"
 
-      - name: Trivy config (misconfigurations, HIGH/CRITICAL bloquants)
+      # --skip-download : aucun appel a la plateforme de l'editeur.
+      - name: Checkov (Kubernetes rendu, bloquant)
         run: |
-          docker run --rm -v "$RUNNER_TEMP/render":/render:ro -v "$PWD/.trivyignore":/.trivyignore:ro "$TRIVY_IMAGE" config \
-            --exit-code 1 --severity HIGH,CRITICAL --ignorefile /.trivyignore /render
+          docker run --rm -v "$RUNNER_TEMP/render":/render:ro -v "$PWD/.checkov.yaml":/.checkov.yaml:ro "$CHECKOV_IMAGE" \
+            --config-file /.checkov.yaml --directory /render --framework kubernetes --quiet --compact --skip-download
 
-      - name: Trivy config (Terraform, misconfigurations AWS, HIGH/CRITICAL bloquants)
+      - name: Checkov (Terraform, bloquant)
         run: |
-          docker run --rm -v "$PWD/terraform":/terraform:ro -v "$PWD/.trivyignore":/.trivyignore:ro "$TRIVY_IMAGE" config \
-            --exit-code 1 --severity HIGH,CRITICAL --ignorefile /.trivyignore /terraform
+          docker run --rm -v "$PWD/terraform":/terraform:ro "$CHECKOV_IMAGE" \
+            --directory /terraform --framework terraform --quiet --compact --skip-download
 
   kind:
     name: "③ Tests (kind)"

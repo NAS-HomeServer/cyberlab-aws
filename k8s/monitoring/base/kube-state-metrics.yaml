@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kube-state-metrics
+  annotations:
+    # Exceptions Checkov (analyse de securite de la CI), limitees a cette ressource.
+    checkov.io/skip1: "CKV_K8S_38=Lit l'API Kubernetes, jeton necessaire (droits limites par RBAC)"
   namespace: monitoring
   labels:
     app.kubernetes.io/name: kube-state-metrics

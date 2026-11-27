@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sherlock
+  annotations:
+    # Exceptions Checkov (analyse de securite de la CI), limitees a cette ressource.
+    checkov.io/skip1: "CKV_K8S_40=UID 1000 conserve, runAsNonRoot impose"
   labels:
     app.kubernetes.io/name: sherlock
     app.kubernetes.io/part-of: cyberlab

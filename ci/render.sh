@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rend chaque overlay Kustomize en un fichier YAML (celui que le cluster recevra).
-# Les validateurs (kubeconform, trivy) travaillent sur ces fichiers, pas sur les sources.
+# Les validateurs (kubeconform, Checkov) travaillent sur ces fichiers, pas sur les sources.
 # Usage : ci/render.sh <dossier de sortie>
 set -euo pipefail
 OUT="${1:?dossier de sortie attendu}"
