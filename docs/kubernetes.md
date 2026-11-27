@@ -42,7 +42,7 @@ k8s/
 
 ## Les manifestes : ce qu'il faut retenir
 
-**Base** : 3 backends (`sherlock`, `dns-analyzer`, `audit-orchestrator`), chacun avec son tunnel `cloudflared`. Soit **6 Deployments par environnement** (7 pods en production, où `dns-analyzer` a 2 réplicas).
+**Base** : 3 backends (`sherlock`, `dns-analyzer`, `audit-orchestrator`), chacun avec son tunnel `cloudflared`. Soit **6 Deployments par environnement** (7 pods en production, où `sherlock` a 2 réplicas).
 
 Chaque backend est durci : pas de root (`runAsNonRoot`), système de fichiers en lecture seule, toutes les *capabilities* retirées, profil seccomp `RuntimeDefault`, pas de jeton d'API Kubernetes monté, sondes `startup`/`readiness`/`liveness` sur `/health`, mises à jour sans coupure (`maxUnavailable: 0`).
 
@@ -82,7 +82,7 @@ L'**egress** reste libre (les backends interrogent Internet par nature).
 |---|---|---|
 | Namespace | `cyberlab-staging` | `cyberlab-production` |
 | Image des backends | digest `sha256:…` (arrive en premier) | mêmes digests, recopiés après validation |
-| `dns-analyzer` | 1 réplica | **2 réplicas** |
+| `sherlock` | 1 réplica | **2 réplicas** |
 | Limites mémoire | réduites (sherlock 384 Mi, les autres 256 Mi) | celles de la base |
 | Synchronisation Argo CD | **automatique** | **sur clic « Sync »** (validation humaine) |
 

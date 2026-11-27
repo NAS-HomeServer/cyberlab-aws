@@ -138,7 +138,7 @@ Après environ 2 min 30 (`for: 2m` + délai de regroupement de l'Alertmanager), 
 sudo kubectl -n argocd patch application cyberlab-production --type merge -p '{"operation":{"sync":{}}}'
 ```
 
-Argo CD ramène `sherlock` à 1 replica, l'alerte se résout (message « résolu » sur Discord). **Lancer la coupure en début de démonstration**, pour que l'alerte soit visible au moment d'y revenir.
+Argo CD ramène `sherlock` à 2 replicas, l'alerte se résout (message « résolu » sur Discord). **Lancer la coupure en début de démonstration**, pour que l'alerte soit visible au moment d'y revenir.
 
 ## Résumé : ce qu'il faut faire, dans l'ordre
 
