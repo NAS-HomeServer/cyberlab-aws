@@ -110,5 +110,6 @@ nas-monitoring/     (annexe) règles d'alerte à copier sur le Prometheus du NAS
 - [docs/gitops.md](docs/gitops.md) : Argo CD, mise en production, rollback
 - [docs/secrets.md](docs/secrets.md) : SOPS + age
 - [docs/test-reconstruction.md](docs/test-reconstruction.md) : `destroy` puis `apply`
+- [docs/ha-sauvegarde.md](docs/ha-sauvegarde.md) : disponibilité, scalabilité, sauvegarde et restauration
 - [docs/notes-projet.md](docs/notes-projet.md) : décisions et difficultés
 - Annexe, côté NAS : [docs/changements-nas-monitoring.md](docs/changements-nas-monitoring.md) (Tailscale, récepteur Prometheus, règles d'alerte)
