@@ -1,0 +1,6 @@
+# Exceptions Checkov valables pour tout le depot. Les autres sont ecrites sur la ressource concernee
+# (annotation checkov.io/skip dans k8s/, commentaire checkov:skip dans terraform/).
+# La version libre de Checkov ne filtre pas par severite : tout ecart non liste ici est bloquant.
+skip-check:
+  # Limites CPU : volontairement absentes (pas de bridage). Les requests CPU et les limites memoire existent.
+  - CKV_K8S_11

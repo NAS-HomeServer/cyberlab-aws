@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cloudflared-audit
+  annotations:
+    # Exceptions Checkov (analyse de securite de la CI), limitees a cette ressource.
+    checkov.io/skip1: "CKV_K8S_35=L'application lit ses secrets dans des variables d'environnement"
   labels:
     app.kubernetes.io/name: cloudflared
     app.kubernetes.io/instance: cloudflared-audit

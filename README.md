@@ -10,7 +10,7 @@ Migration du **cyberlab** (3 backends `sherlock`, `dns-analyzer`, `audit-orchest
 | Démarrage | **cloud-init** + `scripts/bootstrap-node.sh` | installe K3s, Argo CD, secrets, Tailscale au premier démarrage |
 | Déploiement | **Argo CD + Kustomize** (GitOps) | Git est la source de vérité ; staging automatique, production après un clic « Sync » |
 | Secrets | **SOPS + age** | secrets chiffrés dans Git, clé privée dans AWS SSM |
-| Qualité / sécurité | **GitHub Actions** | lint, Gitleaks, Cosign, Trivy, test sur kind |
+| Qualité / sécurité | **GitHub Actions** | lint, Gitleaks, Cosign, Checkov, test sur kind |
 | Supervision | **Prometheus Agent** | envoie les métriques au Prometheus du NAS par Tailscale |
 
 Mise en production : pull request (digest d'image) puis « Sync » ; retour arrière : `git revert`. Une instance neuve est prête en moins de 3 minutes (hors création AWS), et `terraform destroy` puis `apply` reconstruit tout sans intervention, la production attendant ensuite son clic « Sync » ([test de reconstruction](docs/test-reconstruction.md)).
@@ -100,7 +100,7 @@ nas-monitoring/     (annexe) règles d'alerte à copier sur le Prometheus du NAS
 | Étape | Contrôles |
 |---|---|
 | ① Code Quality | yamllint, shellcheck, Kustomize + kubeconform, promtool, `terraform fmt` + `validate` |
-| ② Security | Gitleaks, Cosign, Trivy (Kubernetes et Terraform, HIGH/CRITICAL bloquants) |
+| ② Security | Gitleaks, Cosign, Checkov (Kubernetes et Terraform, tout écart non justifié est bloquant) |
 | ③ Tests (kind) | déploiement complet sur un cluster jetable |
 
 ## Documentation
