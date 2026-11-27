@@ -112,17 +112,18 @@ sudo kubectl -n argocd get applications     # les 3 applications doivent être S
 Ce qu'on montre : si un pod meurt, le service revient tout seul. Aucune ligne de commande n'est nécessaire, tout se fait dans l'interface Argo CD.
 
 1. Ouvrir l'application `cyberlab-production` : la chaîne Deployment → ReplicaSet → Pod est visible.
-2. Sur un pod `dns-analyzer` (2 réplicas en production), cliquer sur le menu `⋮` puis **Delete**, et confirmer.
+2. Sur un pod `sherlock` (2 réplicas en production), cliquer sur le menu `⋮` puis **Delete**, et confirmer.
 3. Le pod disparaît et un nouveau, au suffixe différent, apparaît en quelques secondes ; l'application reste `Synced` / `Healthy`.
 
 Variante en ligne de commande, sur l'instance :
 
 ```bash
 sudo kubectl -n cyberlab-production get pods -w
-sudo kubectl -n cyberlab-production delete pod -l app.kubernetes.io/name=dns-analyzer --wait=false
+# un seul des deux pods (avec -l seul, les deux seraient supprimés)
+sudo kubectl -n cyberlab-production delete --wait=false "$(sudo kubectl -n cyberlab-production get pods -l app.kubernetes.io/name=sherlock -o name | head -n 1)"
 ```
 
-À dire : **ce n'est pas Argo CD qui recrée le pod, c'est Kubernetes** : le ReplicaSet maintient le nombre de réplicas demandé (`replicas`). Argo CD, lui, garde le *Deployment* conforme à Git, ce que montre l'exemple suivant. Résilience des pods par Kubernetes, résilience de la configuration par Argo CD. Avec 2 réplicas, `dns-analyzer` reste disponible pendant la suppression ; les services à 1 réplica (sherlock par exemple) ont une brève coupure.
+À dire : **ce n'est pas Argo CD qui recrée le pod, c'est Kubernetes** : le ReplicaSet maintient le nombre de réplicas demandé (`replicas`). Argo CD, lui, garde le *Deployment* conforme à Git, ce que montre l'exemple suivant. Résilience des pods par Kubernetes, résilience de la configuration par Argo CD. Avec 2 réplicas, `sherlock` accepte toujours de nouveaux scans pendant la suppression (un scan en cours sur le pod supprimé est coupé) ; les services à 1 réplica (`dns-analyzer` par exemple) ont une brève coupure.
 
 Pour montrer aussi qu'Argo CD protège les objets eux-mêmes : `sudo kubectl -n cyberlab-staging delete deploy sherlock`. L'application passe `OutOfSync` puis Argo CD recrée le Deployment, son ReplicaSet et son pod.
 
@@ -145,13 +146,13 @@ sudo kubectl -n cyberlab-staging get deploy dns-analyzer -w
 
 ### Exemple 3 : un déploiement par Git, puis un rollback
 
-Ce qu'on montre : un changement se déploie en fusionnant une pull request, et se défait en la revertant. Personne ne touche au cluster. On passe `dns-analyzer` de 1 à 2 réplicas en staging.
+Ce qu'on montre : un changement se déploie en fusionnant une pull request, et se défait en la revertant. Personne ne touche au cluster. On passe `sherlock` de 1 à 2 réplicas en staging.
 
 1. Dans `k8s/cyberlab/overlays/staging/kustomization.yaml`, ajouter à la fin du fichier (même syntaxe que l'overlay de production) :
 
    ```yaml
    replicas:
-     - name: dns-analyzer
+     - name: sherlock
        count: 2
    ```
 
@@ -159,7 +160,7 @@ Ce qu'on montre : un changement se déploie en fusionnant une pull request, et s
 
    ```bash
    git switch -c demo/replicas-staging
-   git commit -am "demo: 2 replicas de dns-analyzer en staging"
+   git commit -am "demo: 2 replicas de sherlock en staging"
    git push -u origin HEAD && gh pr create --base main
    ```
 

@@ -23,7 +23,7 @@ Décisions, alternatives écartées et difficultés rencontrées, par étape.
 
 | | sherlock | dns-analyzer | audit-orchestrator |
 |---|---|---|---|
-| Données durables | aucune | aucune (fichier temporaire dans `/tmp`) | aucune (jobs en mémoire, purgés après 1 h) |
+| Données durables | aucune | aucune (fichier temporaire dans `/tmp`, jobs en mémoire, purgés après 1 h) | aucune (jobs en mémoire, purgés après 1 h) |
 | Tests unitaires en CI | non | non | non |
 | `/metrics` Prometheus | non | non | non |
 | `/health` | oui | oui | oui |
@@ -32,9 +32,9 @@ Conséquences :
 - **Pas de volume EBS ni de bucket S3 pour les données** : les backends sont sans état durable. C'est
   une décision argumentée, pas un oubli. Le seul stockage durable du projet est l'état Terraform
   (fichier local sur le poste).
-- **Un seul réplica par backend**, sauf `dns-analyzer` en production (voir « Réplicas ») :
-  `audit-orchestrator` garde ses jobs dans la mémoire du process, le suivi d'un job doit retomber
-  sur le même pod.
+- **Un seul réplica par backend**, sauf `sherlock` en production (voir « Réplicas ») :
+  `dns-analyzer` et `audit-orchestrator` gardent leurs jobs dans la mémoire du process, le suivi d'un
+  job doit retomber sur le même pod.
 - **Pas de `/metrics` côté backends** (les modifier toucherait 3 dépôts). Leur santé vient de
   kube-state-metrics (réplicas disponibles, redémarrages) et cAdvisor (CPU, mémoire). Les tunnels
   exposent `/metrics` grâce à `--metrics`.
@@ -316,14 +316,22 @@ Instance neuve créée par un seul `terraform apply`, sans intervention ensuite 
 
 Mise en production depuis staging et `git revert`, rejoués sur AWS.
 
-## Réplicas : un seul partout, deux pour `dns-analyzer` en production
+## Réplicas : un seul partout, deux pour `sherlock` en production
 
 - **Règle de départ : 1 réplica.** Un seul nœud K3s : trois réplicas tourneraient sur la même machine
   (aucun gain si elle tombe) et ne tiendraient pas dans les 4 Go. Les mises à jour se font sans coupure
   (`maxSurge: 1`, `maxUnavailable: 0`).
-- **Exception : `dns-analyzer` a 2 réplicas en production**, par `replicas:` dans
-  `k8s/cyberlab/overlays/production/kustomization.yaml`. Il ne garde aucun état entre deux requêtes ;
-  `audit-orchestrator` (jobs en mémoire) et `sherlock` restent à 1. Staging reste à 1.
+- **Exception : `sherlock` a 2 réplicas en production**, par `replicas:` dans
+  `k8s/cyberlab/overlays/production/kustomization.yaml`. Une requête = un scan complet, renvoyé en flux
+  sur la même connexion : aucun job à retrouver ensuite. `dns-analyzer` et `audit-orchestrator` (jobs en
+  mémoire, suivis par des requêtes séparées) restent à 1. Staging reste à 1.
 - **Ce que cela montre** : le nombre de réplicas se règle par environnement dans l'overlay, par une PR,
-  appliqué par Argo CD. Limite connue : les deux réplicas partagent le même nœud.
-- À vérifier sur AWS : 2 pods `dns-analyzer` en production, mémoire de l'instance (`free -m`).
+  appliqué par Argo CD.
+- **Limites connues** : les deux réplicas partagent le même nœud ; les quotas de `sherlock` (5 scans par
+  minute, 30 requêtes par heure) sont comptés par pod, donc peuvent aller jusqu'au double ; un scan en
+  cours est perdu si son pod disparaît.
+- **Erreur corrigée** : les 2 réplicas avaient d'abord été donnés à `dns-analyzer`, supposé sans état.
+  Son code garde les jobs en mémoire : un suivi pouvait arriver sur l'autre pod (404). Leçon : vérifier
+  l'état dans le code avant d'ajouter des réplicas.
+- À vérifier sur AWS : 2 pods `sherlock` en production, mémoire de l'instance (`free -m`, chaque pod
+  pouvant monter à 1 Gio).

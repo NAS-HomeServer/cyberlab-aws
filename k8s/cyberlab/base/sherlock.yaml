@@ -7,8 +7,8 @@ metadata:
     app.kubernetes.io/part-of: cyberlab
     app.kubernetes.io/component: backend
 spec:
-  # 1 seul replica : les jobs sont gardes en memoire du process (aucune donnee
-  # durable), un suivi de job doit retomber sur le meme pod.
+  # Aucun job a suivre : chaque scan est renvoye en flux sur la requete qui le lance
+  # (aucune donnee durable). 2 replicas en production (overlay).
   replicas: 1
   strategy:
     type: RollingUpdate
